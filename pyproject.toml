@@ -10,5 +10,13 @@ authors = [
   { name = "Davide Carecci", email = "davide.carecci@polimi.it" }
 ]
 readme = "README.md"
-requires-python = ">=3.8"
-dependencies = []
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "scipy",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
