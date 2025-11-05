@@ -8,6 +8,7 @@ from typing import Callable, Dict, List, Any, Union, Optional
 from .filter_df_by_timestamp import filter_df_by_timestamp
 from .create_and_change_dir import create_and_change_dir
 
+##############################################################
 def read_and_split_txt(filename, delimiter='\t', log: bool = False):
     """
     Read a text file and split all the columns present in each line.
@@ -50,8 +51,8 @@ def read_and_split_txt(filename, delimiter='\t', log: bool = False):
         logging.info(f'Read file named: {os.path.basename(filename)}')
     
     return columns
-##############################################################
 
+##############################################################
 def filter_and_convert_to_time(file_path=None, start_timestamp=None, end_timestamp=None, fill_option="zeros", df: pd.DataFrame = None, log: bool = False):
     """
     Read a CSV file, filter it by timestamp, and convert timestamps to seconds starting from a given start time.
@@ -157,6 +158,7 @@ def filter_and_convert_to_time(file_path=None, start_timestamp=None, end_timesta
     array = df.to_numpy()
 
     return df, array, before_start_df
+
 ##############################################################
 def check_and_adjust_interp_output(time_points, values, threshold=100, max_duration=300):
     """
@@ -191,8 +193,8 @@ def check_and_adjust_interp_output(time_points, values, threshold=100, max_durat
                 values[group[max_duration // (time_points[1] - time_points[0]):]] = 1e-10
 
     return values, consecutive_groups
-##############################################################
 
+##############################################################
 def read_excel_file(file_path, exclude_sheet=None, start_timestamp=None, end_timestamp=None, log: bool = False, save_csv: bool = False):
     """
     Read an Excel file and return a dictionary of DataFrames for each sheet, optionally filtering rows
@@ -243,8 +245,8 @@ def read_excel_file(file_path, exclude_sheet=None, start_timestamp=None, end_tim
         logging.info(f'Read file named: {os.path.basename(file_path)}')
     
     return sheet_dict
-##############################################################
 
+##############################################################
 def read_input_files(cwd: str, paths: List[str], input_directory: str, parameter_filenames: List[str], input_filenames, start_timestamp, end_timestamp, 
                      fill_option: List=["zeros", "zeros", "zeros"]):
     #fill_option list refers to [flowrates, compositions, states]
@@ -291,8 +293,8 @@ def read_input_files(cwd: str, paths: List[str], input_directory: str, parameter
     logging.info(f'Initial condition is {dict(zip(x[0].keys()[1:], x0))}')
 
     return maize, cowslurry, tomatosauce, d_flow, u_flow, x, x0, params, integrator_parameters, parameters_other
-##############################################################
 
+##############################################################
 def read_csv_file(file_path, log: bool = False):
     df = pd.read_csv(file_path)
     # Ensure the 'Timestamp' column exists and is in datetime format
@@ -303,8 +305,8 @@ def read_csv_file(file_path, log: bool = False):
         logging.info(f'Read file named: {os.path.basename(file_path)}')
     # Filter the DataFrame using the start and end timestamps (only if it becomes too heavy to be read).
     return df
-##############################################################
 
+##############################################################
 def read_all(cwd: str, paths: List[str], input_directory: str, parameter_filenames: List[str], input_filenames, 
              start_timestamp=None, end_timestamp=None):
     # parameter_filenames = [process_parameters, integrator_parameters] have to be stored in cwd
@@ -367,8 +369,8 @@ def read_all(cwd: str, paths: List[str], input_directory: str, parameter_filenam
     # READ DATA
 
     return maize, cowslurry, tomatosauce, d_flow, u_flow, init, theta
-##############################################################
 
+##############################################################
 def cut_and_interpolate_df(df: pd.DataFrame, start_timestamp: pd.Timestamp, end_timestamp: pd.Timestamp, 
                         variables: List[str], kind: str = 'linear', fill_value = None, bounds_error: bool = False,
                         eval_times: Optional[np.ndarray] = None, log: bool = False) -> Dict[str, np.ndarray]:
@@ -430,4 +432,4 @@ def cut_and_interpolate_df(df: pd.DataFrame, start_timestamp: pd.Timestamp, end_
 
     return interp_funcs
 
-
+##############################################################

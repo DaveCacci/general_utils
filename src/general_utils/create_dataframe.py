@@ -27,7 +27,14 @@ def create_dataframe(names, data,start_time):
 
 def create_dataframe_sec(names, data,start_time, frequency: int):
     """
-    frequency: integer to specify in seconds the frequency of timestamp generation
+    Create a DataFrame from a list of names and a list of arrays with timestamp column generated at specified frequency.
+    Parameters:
+    - names (list): List of column names.
+    - data (list): List of arrays, where each array corresponds to a column.
+    - start_time (str or pd.Timestamp): The starting timestamp for the DataFrame.
+    - frequency (int): The frequency of timestamp generation in seconds.
+    Returns:
+    - pd.DataFrame: Resulting DataFrame.
     """
     
     if len(names) != len(data):

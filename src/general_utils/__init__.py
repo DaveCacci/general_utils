@@ -1,4 +1,3 @@
-from .math_helpers import add
 from .read_file import *
 from .save_df import *
 from .filter_df_by_timestamp import filter_df_by_timestamp
@@ -7,3 +6,7 @@ from .create_dataframe import *
 from .convert_u_to_pwm import convert_u_to_pwm
 from .FlexiblePlotter import *
 from .udm_gas_conversion import udm_gas_conversion
+from .extract_nearest_row import extract_nearest_row
+from .old_uit_functions import *
+from .modelica_integrator import *
+from .modelica_optimizer import *
