@@ -5,8 +5,8 @@ import DyMat
 import psutil
 from datetime import datetime, timedelta
 import numpy as np
-from general_utils.create_dataframe import create_dataframe, create_dataframe_sec
-from general_utils.save_df import*
+from .create_dataframe import create_dataframe, create_dataframe_sec
+from .save_df import*
 import logging
 #import pandas as pd
 import glob
@@ -44,7 +44,8 @@ def is_string_in_file(file_path, target_string):
 
 def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_dict: dict, param_scale_dict: dict, x0_dict: dict, time_interval: float, start_time: int, stop_time: int, tolerance: float, 
                     omc_path: str = None, results_sample_interval: int = None, timestamp_start: datetime = datetime.now(), x0_extract_names: list = None, path_to_x0_extract: list = None, path_to_outputs_extract: list = None,
-                    outputs_extract_names: list = None, log_datetime: datetime = "", log: bool = True):
+                    outputs_extract_names: list = None, log_datetime: datetime = "", return_dymat: bool = False, log: bool = True,
+                    round_params: int = 8):
     '''
     A function to run Modelica simulations from Python using OpenModelica compiler (omc).
     It creates a temporary folder to store the results, writes a .mos script with the simulation commands,
@@ -61,19 +62,26 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
     > tolerance: float for the simulation tolerance
     > omc_path: string of the path where the omc.exe is located. If None, a standard path is used.
     > results_sample_interval: integer of seconds for the sampling interval of the results. If None, it is set to time_interval.
-    > timestamp_start: datetime for the start timestamp of the simulation results.
+    > timestamp_start: datetime for the start timestamp of the simulation results. To create dataframe only. Default is datetime.now().
     > x0_extract_names: list of strings with the names of the states to extract final values from the simulation.
     > path_to_x0_extract: list of strings with the "internal" paths to the states to extract final values from the simulation.
     > path_to_outputs_extract: list of strings with the "internal" paths to the outputs to extract from the simulation.
     > outputs_extract_names: list of strings with the names of the outputs to extract from the simulation. Must have at least one element.
     > log_datetime: datetime to append to the log and result files.
     > log: boolean to enable or disable logging of info messages.
+    > return_dymat: boolean to return also the DyMat file object along with the outputs and final states.
+    > round_params: integer to round the parameter values when setting them in the model.
     Returns:
-    > y_df_adm1: pandas DataFrame containing the outputs of interest with timestamps as index.
+    -------
+    > y_df: pandas DataFrame containing the outputs of interest with timestamps as index.
     > final_states_dict: dictionary containing the final states extracted from the simulation.
+    > mat_file: DyMat file object containing the simulation results.
 
     Note: if time_interval is less than 1, a different function shall be used to create the dataframe with timestamps.
         This is to ensure that the timestamps are generated correctly for high-frequency simulations i.e. sub-second intervals.
+    Note: The .mos and .log files are created inside the temporary folder. Check them for debugging purposes.
+    Note: User cannot extract constant and parameters as outputs (issues with y_df creation)! To extract them, use return_dymat=True and get them from the DyMat file externally.
+    Note: when dealing with control actions in the order of 1e2 g/day or higher, it is recommended to set the parameter 'round_params' to max 2 to avoid numerical issues when setting parameters in Modelica.
     '''
     # Change temporaily the directory to save results
     original_dir = os.getcwd()  # Store the current directory
@@ -130,7 +138,7 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
     for key, value in param_dict.items():
         if key in param_scale_dict:
         # Concatenate the string for each iteration
-            parametric += f"""setParameterValue({model_name}, {key}, {np.round(value/param_scale_dict[key],2)}); getErrorString(); \n"""
+            parametric += f"""setParameterValue({model_name}, {key}, {np.round(value/param_scale_dict[key],round_params)}); getErrorString(); \n"""
         else:
             logging.warning(f"Key {key} not found in the scale dictionary.")
     # ADD one line for every initial condition parameter to be set
@@ -191,13 +199,14 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
             variable = mat_file.data(variable_name)[-1]
             final_states.append(variable)
         else:
-            logging.warning(f"Variable {variable_name} not found in the DyMat file.")
+            if log:
+                logging.warning(f"Variable {variable_name} not found in the DyMat file.")
     final_states_dict = dict(zip(x0_extract_names, final_states))
 
     # Extract outputs of interest for pilot
     time_simulation = mat_file.abscissa(f"{path_to_outputs_extract[0]}.{outputs_extract_names[0]}",valuesOnly=True) if path_to_outputs_extract[0] != "" else mat_file.abscissa(f"{outputs_extract_names[0]}",valuesOnly=True)
 
-    y_adm1 = []
+    y = []
     for i in range(len(outputs_extract_names)):
         if path_to_outputs_extract[i]=="":
             variable_name = f"{outputs_extract_names[i]}"
@@ -205,9 +214,10 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
             variable_name = f"{path_to_outputs_extract[i]}.{outputs_extract_names[i]}"
         if variable_name in mat_file.names():
             variable = mat_file.data(variable_name)
-            y_adm1.append(variable)
+            y.append(variable)
         else:
-            logging.warning(f"Variable {variable_name} not found in the DyMat file.")
+            if log:
+                logging.warning(f"Variable {variable_name} not found in the DyMat file.")
 
     # ------------------------------------------------------------------------ #
 
@@ -215,13 +225,16 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
     x_data = np.arange(results_sample_interval, time_simulation[-1]+results_sample_interval, results_sample_interval) # It does not take the initial condition! 
     # Define y_data
     xy, x_ind, y_ind = np.intersect1d(time_simulation, x_data, return_indices=True)
-    y_discrete_adm1 = [np.take(arr,x_ind) for arr in y_adm1]
+    y_discrete = [np.take(arr,x_ind) for arr in y]
     # I have to add the first state value...only if startime=0!! Else, do not repeat the initial condition
     if start_time == 0:
-        y_discrete_adm1 = [np.insert(arr, 0, val) for arr, val in zip(y_discrete_adm1, [y_adm1[i][0] for i in range(len(y_adm1))])]
-    y_df_adm1 = create_dataframe_sec(outputs_extract_names, y_discrete_adm1, timestamp_start, results_sample_interval)
+        y_discrete = [np.insert(arr, 0, val) for arr, val in zip(y_discrete, [y[i][0] for i in range(len(y))])]
+    y_df = create_dataframe_sec(outputs_extract_names, y_discrete, timestamp_start, results_sample_interval)
 
     # Return to the original directory
     os.chdir(original_dir)
-    
-    return y_df_adm1, final_states_dict
+
+    if return_dymat:
+        return y_df, final_states_dict, mat_file
+    else:
+        return y_df, final_states_dict

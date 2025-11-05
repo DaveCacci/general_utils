@@ -1,4 +1,4 @@
-from compute_error import compute_error
+from .compute_error import compute_error
 import pandas as pd
 import numpy as np
 from typing import Callable, Dict, List, Any, Union
@@ -9,7 +9,8 @@ def cumulative_error(y_df: pd.DataFrame,
                      y_df_data_off:pd.DataFrame, 
                      var_couples_list: List, 
                      start_timestamp_error, end_timestamp_error, 
-                     weighting_type: str = 'none', weighting_param: list = []) -> Dict:
+                     weighting_type: str = 'none', weighting_param: list = [],
+                     return_mode: str = 'all', **kwargs) -> Union[tuple, Dict]:
     """
     Compute cumulative weighted errors between model predictions and measured data (both online and offline).
     Errors are evaluated over the common Timestamps between model and measurements.
@@ -33,6 +34,7 @@ def cumulative_error(y_df: pd.DataFrame,
         - [1]: str, corresponding measured variable name
         - [2]: float, weight factor (w_y) for non-normalized (only scaled) error
         - [3]: float, weight factor (w_y_norm) for normalized error
+    Note: [0] and [1] MUST BE DIFFERENT FOR EACH OUTPUT VARIABLE TO AVOID OVERWRITING ISSUES IN THE MERGED DATAFRAMES.
     start_timestamp_error : timestamp-like
         Start timestamp for error calculation window.
     end_timestamp_error : timestamp-like
@@ -49,15 +51,30 @@ def cumulative_error(y_df: pd.DataFrame,
         - For 'exp': [decay_rate_in_days]
         - For 'none': []
         Passed to compute_error function.
+    return_mode : str, optional
+            Controls what the function returns:
+            - 'all': returns full tuple (sMSE, RMSE, merged_df_dict, R2, MAREpc)
+            - 'sMSE': returns only sMSE dictionary
+            - 'RMSE': returns only RMSE dictionary
+            - 'merged_df_dict': returns only merged_df_dict
+            - 'R2': returns only R2 dictionary
+            - 'MAREpc': returns only MAREpc dictionary
+            Default is 'all'.
+    **kwargs : Additional keyword arguments (not used). For compatibility with other function calls (flexibility).
     
     Returns
     -------
-    tuple of (Dict, Dict, Dict, Dict, Dict)
-        f_obj : Dict[str, float]
+    Union[tuple, Dict]
+        If return_mode='all':
+            tuple of (sMSE, RMSE, merged_df_dict, R2, MAREpc)
+        Otherwise:
+            The single dictionary specified by return_mode
+
+        sMSE : Dict[str, float]
             Least squares error for each output variable (scaled with the mean of measurements just for scaling).
             Scaled Mean Squared Error (scaled-MSE). Scaled to make different outputs comparable.
             Each output variable's scaled-MSE is weighted according to specified weights.
-        f_obj_norm : Dict[str, float]
+        RMSE : Dict[str, float]
             Weighted least squares (WLS) error for each output variable (normalized by measurement for each t time index).
             Relative Mean Squared Error (RMSE). Each output variable's RMSE is weighted according to specified weights.
             This is actually a true implementation of WLS.
@@ -104,10 +121,10 @@ def cumulative_error(y_df: pd.DataFrame,
                                                              weighting_type, weighting_param)
 
     # Initialize dictionaries for output metrics
-    f_obj = {}        # weighted and scaled MSE
-    f_obj_norm = {}   # weighted RMSE (for WLS)
-    R2 = {}           # Coefficient of determination (R²)
-    MAREpc = {}       # Mean absolute relative error in percentage terms (MARE%)
+    sMSE = {}        # weighted and scaled MSE
+    RMSE = {}        # weighted RMSE (for WLS)
+    R2 = {}          # Coefficient of determination (R²)
+    MAREpc = {}      # Mean absolute relative error in percentage terms (MARE%)
     
     # Compute weighted errors and performance metrics for each output variable
     for i, output_name in enumerate(output_names):
@@ -127,7 +144,7 @@ def cumulative_error(y_df: pd.DataFrame,
         merged_df_dict[output_name] = df_concatenated
         
         # Compute total weighted error, normalized by number of measurements
-        f_obj[output_name] = 0 if merged_df_dict[output_name]['err_sqr'].empty else \
+        sMSE[output_name] = 0 if merged_df_dict[output_name]['err_sqr'].empty else \
                              df_concatenated[f'{output_name}-WLS'].sum() / len(merged_df_dict[output_name]['err_sqr'])
 
         # --- Weight and cumulate normalized squared errors. Compute RMSE ---
@@ -144,7 +161,7 @@ def cumulative_error(y_df: pd.DataFrame,
         merged_df_dict[output_name] = df_concatenated
         
         # Compute total normalized weighted error, normalized by number of measurements
-        f_obj_norm[output_name] = 0 if merged_df_dict[output_name]['err_sqr'].empty else \
+        RMSE[output_name] = 0 if merged_df_dict[output_name]['err_sqr'].empty else \
                                    df_concatenated[f'{output_name}_norm-WLS'].sum() / len(merged_df_dict[output_name]['err_sqr'])
         
         # --- Compute Coefficient of determination (R²) ---
@@ -160,5 +177,19 @@ def cumulative_error(y_df: pd.DataFrame,
         marepc = 0 if merged_df_dict[output_name]['err_norm'].empty else \
                  merged_df_dict[output_name]['err_norm'].abs().sum() / len(merged_df_dict[output_name]['err_norm']) * 100
         MAREpc[output_name] = round(marepc, 4)
-        
-    return f_obj,f_obj_norm,merged_df_dict, R2, MAREpc
+
+    # Return based on return_mode
+    if return_mode == 'all':
+        return sMSE, RMSE, merged_df_dict, R2, MAREpc
+    elif return_mode == 'sMSE':
+        return sMSE
+    elif return_mode == 'RMSE':
+        return RMSE
+    elif return_mode == 'merged_df_dict':
+        return merged_df_dict
+    elif return_mode == 'R2':
+        return R2
+    elif return_mode == 'MAREpc':
+        return MAREpc
+    else:
+        raise ValueError(f"Invalid return_mode '{return_mode}'. Must be one of: 'all', 'sMSE', 'RMSE', 'merged_df_dict', 'R2', 'MAREpc'")

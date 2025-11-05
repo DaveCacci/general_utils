@@ -138,7 +138,7 @@ def compute_error(df_output, df_meas, var_couple, start_timestamp_error, end_tim
         # Uniform weighting: all measurements equally important
         merged_df['weights'] = np.ones(len(merged_df[var_couple[1]]))
 
-    # --- Step 4: Compute relative errors (normalized by mean of measurements) ---
+    # --- Step 4: Compute errors (scaled by mean of measurements) ---
     # This error metric is suitable for aggregation across multiple time points
     # Formula: err = (prediction - measurement) / mean(all_measurements)
     # Division by zero protection: set error to 0 when measurement is 0

@@ -1,4 +1,4 @@
-from modelica_integrator import modelica_integrator
+from .modelica_integrator import modelica_integrator
 from scipy.optimize import differential_evolution, minimize
 import numpy as np
 import psutil
@@ -31,7 +31,7 @@ def is_string_in_file(file_path, target_string):
                 return True
     return False
 
-def min_error(y_df, target_values: pd.DataFrame, **kwargs):
+def min_error(y_df: pd.DataFrame, target_values: pd.DataFrame, **kwargs):
         '''
         Compute mean squared error per output between the simulated `y_df` and
         a `target_values` DataFrame. Only columns present in both DataFrames are
@@ -68,7 +68,7 @@ def min_error(y_df, target_values: pd.DataFrame, **kwargs):
                 continue
             sim = y_df[col].to_numpy()
             tgt = target_values[col].to_numpy()
-            cost_dict[col] = np.mean((sim - tgt) ** 2)
+            cost_dict[col] = np.mean(((sim - tgt)/tgt) ** 2)
         return cost_dict
 
 def enforce_constraints(y_df: pd.DataFrame, constraints: list = None,
@@ -164,7 +164,7 @@ def enforce_constraints(y_df: pd.DataFrame, constraints: list = None,
 
     return penalty_dict
 
-def min_error_constrained(y_df, target_values: pd.DataFrame, constraints: list = None,
+def min_error_constrained(y_df: pd.DataFrame, target_values: pd.DataFrame, constraints: list = None,
                           weight_default: float = 50, **kwargs) -> dict:
     """
     Compute MSE per-column between y_df and target_values, and add penalties for constraint violations.
@@ -207,8 +207,7 @@ def min_error_constrained(y_df, target_values: pd.DataFrame, constraints: list =
             continue
         sim = y_df[col].to_numpy()
         tgt = target_values[col].to_numpy()
-        cost_dict[col] = float((sim[-1] - tgt[-1]) ** 2)
-        #cost_dict[col] = float(np.mean((sim - tgt) ** 2))
+        cost_dict[col] = float(np.mean(((sim - tgt)/tgt) ** 2))
 
     # Evaluate constraints (if any) via reusable helper
     penalties = enforce_constraints(y_df, constraints, weight_default, **kwargs)
@@ -252,12 +251,18 @@ class modelica_optimizer:
         # Attribute to store the latest simulation DataFrame
         self.y_df = pd.DataFrame()
 
-    def cost_function_handler(self, param_values):
+    def cost_function_handler(self, param_values: np.ndarray):
         """Objective function for the optimizer.
-
-        param_values is an array-like matching the order of keys in param_bounds
+        Parameters:
+        - param_values is an array-like matching the order of keys in param_bounds
         when param_bounds is a dict, or the order of the provided sequence when
         param_bounds is a sequence.
+        Returns:
+        - A float representing the cost for the given parameter values.
+        Note: if self.iter_df is empty, there will be an issue if modelica integrator fails at the very first run.
+        If the outputs the user is computing the errors of are different from the one extracted from modelica_integrator and/or
+        there are constraints (columns added to self.iter_df), an issue in adding rows to self.iter_df will arise as soon as the integrator will not fail anymore.
+        Anyway, the user can take the last parameter values that doesn't make the integrator fail and restart again iterations!
         """
         param_values = process_array(np.asarray(param_values), self.initial_guesses)
         param_dict = {key: value for key, value in zip(self.param_bounds.keys(), param_values)} if isinstance(self.param_bounds, dict) else {i: v for i, v in enumerate(param_values)}
@@ -284,6 +289,7 @@ class modelica_optimizer:
             try:
                 # Call the cost function: pass simulation dataframe, cost args and integrator kwargs
                 cost_dict = self.cost_function(self.y_df, **(self.cost_args or {}), **(self.integrator_kwargs or {}))
+                
                 # If constraints provided and not already applied by the base function, append penalties here
                 if isinstance(cost_dict, dict):
                     has_penalties = any(str(k).startswith('penalty_') for k in cost_dict.keys())
