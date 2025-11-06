@@ -247,6 +247,32 @@ def read_excel_file(file_path, exclude_sheet=None, start_timestamp=None, end_tim
     return sheet_dict
 
 ##############################################################
+def group_columns_by_string(sheet_dict, string_to_search, exclude_sheet):
+    '''
+    Group columns in each DataFrame by a specific string.
+    To be coupled with read_excel_file function.
+    Parameters:
+    sheet_dict (dict): Dictionary of DataFrames, where keys are sheet names and values are DataFrames.
+    string_to_search (str): The string to search for in column names.
+    exclude_sheet (str): The sheet name to exclude from processing.
+    Returns:
+    grouped_dataframes (dict): Dictionary of DataFrames with grouped columns.
+    '''
+    # Create a new DataFrame by grouping columns containing a certain string
+    grouped_dataframes = {}
+    
+    for sheet_name, df in sheet_dict.items():
+        if sheet_name != exclude_sheet:
+            matching_columns = [col for col in df.columns if string_to_search in col]
+            grouped_df = df[matching_columns]
+            
+            # Exclude empty dataframes
+            if not grouped_df.empty:
+                grouped_dataframes[sheet_name] = grouped_df
+    
+    return grouped_dataframes
+
+##############################################################
 def read_input_files(cwd: str, paths: List[str], input_directory: str, parameter_filenames: List[str], input_filenames, start_timestamp, end_timestamp, 
                      fill_option: List=["zeros", "zeros", "zeros"]):
     #fill_option list refers to [flowrates, compositions, states]

@@ -188,6 +188,8 @@ def min_error_constrained(y_df: pd.DataFrame, target_values: pd.DataFrame, const
       Scale base terms (e.g. MSE) so that a good fit is between 1-100.
       Set weight to have 10-50 times larger penalties for typical violations compared to base MSE terms.
       Set growth_rate to have violation of 100% lead to exponential be around 5. Then apply weight.
+      At typical violations, penalty should be noticeable but not 10⁶ times the base cost.
+      growth_rate must not be crazy high (keep it ≤ 5 for most cases).
     """
 
     if not isinstance(target_values, pd.DataFrame):
@@ -230,7 +232,6 @@ class modelica_optimizer:
     """
 
     def __init__(self, cost_function: callable, initial_guesses: np.ndarray, param_bounds: dict,
-                    optimization_method: str,
                     cost_args: dict = None, integrator_kwargs: dict = None):
         """Initialize the optimizer.
 
@@ -239,7 +240,6 @@ class modelica_optimizer:
         self.cost_function = cost_function
         self.initial_guesses = np.asarray(initial_guesses)
         self.param_bounds = param_bounds
-        self.optimization_method = optimization_method
 
         # integrator kwargs (do NOT include 'param_dict' here)
         self.integrator_kwargs = integrator_kwargs or {}
@@ -280,10 +280,10 @@ class modelica_optimizer:
             outputs_extract_names = self.integrator_kwargs.get('outputs_extract_names', []) # This can actually be different than the all ones extracted by modelica integrator
             # If self.iter_df is not empty, extract the keys from there to ensure continuity
             if not self.iter_df.empty:
-                cost_dict = {name: np.inf for name in self.iter_df.columns}
+                cost_dict = {name: 1e12 for name in self.iter_df.columns} # 1e12 is used instead of np.inf to avoid overflow in some optimizers
             else:
-                cost_dict = {name: np.inf for name in outputs_extract_names} # This can lead the code to stop when modelica does not fail anymore but failed at first iterations!! 
-            total_cost = np.inf
+                cost_dict = {name: 1e12 for name in outputs_extract_names} # This can lead the code to stop when modelica does not fail anymore but failed at first iterations!!
+            total_cost = sum(cost_dict.values())
         else:
             # modelica_integrator succeeded, now call cost_function
             try:
@@ -377,6 +377,8 @@ class modelica_optimizer:
         - polish: Whether to perform a final local search using the L-BFGS-B algorithm (default False).
         Returns:
         - result: OptimizeResult object from SciPy differential_evolution.
+        Note: for earlier stops, decrese max_iter and check self.iter_df for results. 
+        Note: also increase atol to have, for the population at one iteration: std(costs) ≤ atol(costs) + tol(costs) * abs(mean(costs))!
         """
         # Reset iter_df for a fresh optimization run
         self.iter_df = pd.DataFrame()
