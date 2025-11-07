@@ -273,54 +273,6 @@ def group_columns_by_string(sheet_dict, string_to_search, exclude_sheet):
     return grouped_dataframes
 
 ##############################################################
-def read_input_files(cwd: str, paths: List[str], input_directory: str, parameter_filenames: List[str], input_filenames, start_timestamp, end_timestamp, 
-                     fill_option: List=["zeros", "zeros", "zeros"]):
-    #fill_option list refers to [flowrates, compositions, states]
-    # parameter_filenames = [process_parameters, integrator_parameters] have to be stored in cwd
-    # parameter_filenames = [d_flow, u_flow, maize, cowslurry, tomatosauce]
-    # input filenames = [flowrates, compositions, states]
-
-    # Set the current working directory
-    create_and_change_dir(cwd)
-    # Append path to sys
-    for path in paths:
-        sys.path.append(path)
-    sys.path.append(cwd)
-
-    # READ PARAMETERS 
-    import process_parameters as pp
-    import json
-    parameters = pp.load_parameters(os.path.join(cwd,parameter_filenames[0]))
-    pp.convert_lists_to_tuples(parameters)
-    params = parameters['process_parameters']
-    parameters_other = parameters['other_parameters']
-
-    integrator_parameters = pp.load_parameters(os.path.join(cwd,parameter_filenames[1]))
-
-    # READ INPUT DATA
-    d_flow = filter_and_convert_to_time(input_directory + input_filenames[0],
-                                      start_timestamp, end_timestamp,fill_option[0])
-    u_flow = filter_and_convert_to_time(input_directory + input_filenames[1],
-                                      start_timestamp, end_timestamp,fill_option[0])
-    maize = filter_and_convert_to_time(input_directory + input_filenames[2],
-                                      start_timestamp, end_timestamp,fill_option[1])
-    cowslurry = filter_and_convert_to_time(input_directory + input_filenames[3],
-                                      start_timestamp, end_timestamp,fill_option[1])
-    tomatosauce = filter_and_convert_to_time(input_directory + input_filenames[4],
-                                      start_timestamp, end_timestamp,fill_option[1])
-    # Important!!
-    d_flow[1][:,0] = np.round(d_flow[1][:,0])
-    u_flow[1][:,0] = np.round(u_flow[1][:,0])
-
-    # READ INITIAL STATES
-    x = filter_and_convert_to_time(input_directory + input_filenames[5],
-                                      start_timestamp, end_timestamp,fill_option[2])
-    x0 = x[0][x[0]['Timestamp']==0.0].values[0][1:]
-    logging.info(f'Initial condition is {dict(zip(x[0].keys()[1:], x0))}')
-
-    return maize, cowslurry, tomatosauce, d_flow, u_flow, x, x0, params, integrator_parameters, parameters_other
-
-##############################################################
 def read_csv_file(file_path, log: bool = False):
     df = pd.read_csv(file_path)
     # Ensure the 'Timestamp' column exists and is in datetime format
@@ -331,70 +283,6 @@ def read_csv_file(file_path, log: bool = False):
         logging.info(f'Read file named: {os.path.basename(file_path)}')
     # Filter the DataFrame using the start and end timestamps (only if it becomes too heavy to be read).
     return df
-
-##############################################################
-def read_all(cwd: str, paths: List[str], input_directory: str, parameter_filenames: List[str], input_filenames, 
-             start_timestamp=None, end_timestamp=None):
-    # parameter_filenames = [process_parameters, integrator_parameters] have to be stored in cwd
-    # parameter_filenames = [d_flow, u_flow, maize, cowslurry, tomatosauce]
-    # input filenames = [flowrates, compositions, states]
-
-    # Set the current working directory
-    create_and_change_dir(cwd)
-    # Append path to sys
-    for path in paths:
-        sys.path.append(path)
-    sys.path.append(cwd)
-
-    # READ PARAMETERS 
-    import process_parameters as pp
-    import json
-    theta = {}
-    parameters = pp.load_parameters(os.path.join(cwd,parameter_filenames[0]))
-    pp.convert_lists_to_tuples(parameters)
-    theta['params'] = parameters['process_parameters']
-    theta['parameters_other'] = parameters['other_parameters']
-
-    theta['integrator_parameters'] = pp.load_parameters(os.path.join(cwd,parameter_filenames[1])) 
-    logging.info(f'Integrator parameters are present for: {theta["integrator_parameters"].keys()}')
-
-    if len(parameter_filenames) > 2:
-        parameters_ref = pp.load_parameters(os.path.join(cwd,parameter_filenames[2]))
-        pp.convert_lists_to_tuples(parameters_ref)
-        theta['params_ref'] = parameters_ref['process_parameters']
-        theta['parameters_other_ref'] = parameters_ref['other_parameters']
-
-    # Added on 27.02.2025 for parameters_bounds
-    if len(parameter_filenames) > 3:
-        parameters_bounds = pp.load_parameters(os.path.join(cwd,parameter_filenames[3]))
-        pp.convert_lists_to_tuples(parameters_bounds)
-        theta['params_bounds'] = parameters_bounds
-
-    # READ INPUT DATA
-    d_flow = read_csv_file(input_directory + input_filenames[0])
-    u_flow = read_csv_file(input_directory + input_filenames[1])
-    maize = read_csv_file(input_directory + input_filenames[2])
-    cowslurry = read_csv_file(input_directory + input_filenames[3])
-    tomatosauce = read_csv_file(input_directory + input_filenames[4])
-
-    # READ INITIAL STATES
-    init = {}
-    init['x_model'] = read_csv_file(input_directory + input_filenames[5])
-    logging.info('All openloop (combined) model past states loaded...')
-    # ADD HERE ALSO EKF INITIAL STATES AND COV!!
-    if len(input_filenames)>6 and os.path.exists(input_directory + input_filenames[6]):
-        init['x_ekf'] = read_csv_file(input_directory + input_filenames[6])
-        logging.info('All EKF past states loaded...')
-    if len(input_filenames)>7 and os.path.exists(input_directory + input_filenames[7]):
-        init['P_ekf'] = read_csv_file(input_directory + input_filenames[7])
-        logging.info('All EKF past covariance matrixes loaded...')
-    if len(input_filenames)>8 and os.path.exists(input_directory + input_filenames[8]):
-        init['x_model_ref'] = read_csv_file(input_directory + input_filenames[8])
-        logging.info('All openloop (reference) model past states loaded...')
-
-    # READ DATA
-
-    return maize, cowslurry, tomatosauce, d_flow, u_flow, init, theta
 
 ##############################################################
 def cut_and_interpolate_df(df: pd.DataFrame, start_timestamp: pd.Timestamp, end_timestamp: pd.Timestamp, 

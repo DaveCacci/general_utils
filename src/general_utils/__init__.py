@@ -12,3 +12,6 @@ from .cumulative_error import cumulative_error
 from .compute_error import compute_error
 from .modelica_integrator import *
 from .modelica_optimizer import *
+from .save_combi import save_combi
+from .sample_and_create_df import sample_and_create_df, sample_df
+from .process_parameters import *

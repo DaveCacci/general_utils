@@ -201,7 +201,7 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
         else:
             if log:
                 logging.warning(f"Variable {variable_name} not found in the DyMat file.")
-    final_states_dict = dict(zip(x0_extract_names, final_states))
+    final_states_dict = dict(zip(x0_dict.keys(), final_states)) # No x0_extract_names because I want to return the dictionary with the same keys as the input x0_dict
 
     # Extract outputs of interest for pilot
     time_simulation = mat_file.abscissa(f"{path_to_outputs_extract[0]}.{outputs_extract_names[0]}",valuesOnly=True) if path_to_outputs_extract[0] != "" else mat_file.abscissa(f"{outputs_extract_names[0]}",valuesOnly=True)
