@@ -5,7 +5,7 @@ import os
 def save_combi(file_path, array, formats, log: bool = False):
     """
     Save an array to a text file, adapting to the number of columns and applying scientific notation.
-
+    Note: the file_path must already exist and contain at least two first two header lines!!
     Parameters:
         file_path (str): Path to the file to write to.
         array (np.ndarray): Input array to save.

@@ -15,3 +15,4 @@ from .modelica_optimizer import *
 from .save_combi import save_combi
 from .sample_and_create_df import sample_and_create_df, sample_df
 from .process_parameters import *
+from .param_sampling import generate_parameter_samples

@@ -53,9 +53,9 @@ def cumulative_error(y_df: pd.DataFrame,
         Passed to compute_error function.
     return_mode : str, optional
             Controls what the function returns:
-            - 'all': returns full tuple (sMSE, RMSE, merged_df_dict, R2, MAREpc)
+            - 'all': returns full tuple (sMSE, MSRE, merged_df_dict, R2, MAREpc)
             - 'sMSE': returns only sMSE dictionary
-            - 'RMSE': returns only RMSE dictionary
+            - 'MSRE': returns only MSRE dictionary
             - 'merged_df_dict': returns only merged_df_dict
             - 'R2': returns only R2 dictionary
             - 'MAREpc': returns only MAREpc dictionary
@@ -66,7 +66,7 @@ def cumulative_error(y_df: pd.DataFrame,
     -------
     Union[tuple, Dict]
         If return_mode='all':
-            tuple of (sMSE, RMSE, merged_df_dict, R2, MAREpc)
+            tuple of (sMSE, MSRE, merged_df_dict, R2, MAREpc)
         Otherwise:
             The single dictionary specified by return_mode
 
@@ -74,10 +74,10 @@ def cumulative_error(y_df: pd.DataFrame,
             Least squares error for each output variable (scaled with the mean of measurements just for scaling).
             Scaled Mean Squared Error (scaled-MSE). Scaled to make different outputs comparable.
             Each output variable's scaled-MSE is weighted according to specified weights.
-        RMSE : Dict[str, float]
+        MSRE : Dict[str, float]
             Weighted least squares (WLS) error for each output variable (normalized by measurement for each t time index).
-            Relative Mean Squared Error (RMSE). Each output variable's RMSE is weighted according to specified weights.
-            This is actually a true implementation of WLS.
+            Mean Squared Relative Error (MSRE). Each output variable's MSRE is weighted according to specified weights.
+            This is actually a true implementation of WLS. Compute the root outside if RMS(R)E is needed!!
         merged_df_dict : Dict[str, pd.DataFrame]
             Dictionary of DataFrames containing detailed error metrics for each output.
             Output of compute_error function for each variable.
@@ -122,7 +122,7 @@ def cumulative_error(y_df: pd.DataFrame,
 
     # Initialize dictionaries for output metrics
     sMSE = {}        # weighted and scaled MSE
-    RMSE = {}        # weighted RMSE (for WLS)
+    MSRE = {}        # weighted MSRE (for WLS)
     R2 = {}          # Coefficient of determination (R²)
     MAREpc = {}      # Mean absolute relative error in percentage terms (MARE%)
     
@@ -147,7 +147,7 @@ def cumulative_error(y_df: pd.DataFrame,
         sMSE[output_name] = 0 if merged_df_dict[output_name]['err_sqr'].empty else \
                              df_concatenated[f'{output_name}-WLS'].sum() / len(merged_df_dict[output_name]['err_sqr'])
 
-        # --- Weight and cumulate normalized squared errors. Compute RMSE ---
+        # --- Weight and cumulate normalized squared errors. Compute MSRE ---
         # Create diagonal weight matrix for normalized errors
         w_array = w_y_norm[i] * np.ones(len(merged_df_dict[output_name]['err_sqr_norm']))
         w_diag = np.diag(w_array)
@@ -161,7 +161,7 @@ def cumulative_error(y_df: pd.DataFrame,
         merged_df_dict[output_name] = df_concatenated
         
         # Compute total normalized weighted error, normalized by number of measurements
-        RMSE[output_name] = 0 if merged_df_dict[output_name]['err_sqr'].empty else \
+        MSRE[output_name] = 0 if merged_df_dict[output_name]['err_sqr'].empty else \
                                    df_concatenated[f'{output_name}_norm-WLS'].sum() / len(merged_df_dict[output_name]['err_sqr'])
         
         # --- Compute Coefficient of determination (R²) ---
@@ -180,11 +180,11 @@ def cumulative_error(y_df: pd.DataFrame,
 
     # Return based on return_mode
     if return_mode == 'all':
-        return sMSE, RMSE, merged_df_dict, R2, MAREpc
+        return sMSE, MSRE, merged_df_dict, R2, MAREpc
     elif return_mode == 'sMSE':
         return sMSE
-    elif return_mode == 'RMSE':
-        return RMSE
+    elif return_mode == 'MSRE':
+        return MSRE
     elif return_mode == 'merged_df_dict':
         return merged_df_dict
     elif return_mode == 'R2':
@@ -192,4 +192,4 @@ def cumulative_error(y_df: pd.DataFrame,
     elif return_mode == 'MAREpc':
         return MAREpc
     else:
-        raise ValueError(f"Invalid return_mode '{return_mode}'. Must be one of: 'all', 'sMSE', 'RMSE', 'merged_df_dict', 'R2', 'MAREpc'")
+        raise ValueError(f"Invalid return_mode '{return_mode}'. Must be one of: 'all', 'sMSE', 'MSRE', 'merged_df_dict', 'R2', 'MAREpc'")

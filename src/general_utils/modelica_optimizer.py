@@ -71,13 +71,20 @@ def min_error(y_df: pd.DataFrame, target_values: pd.DataFrame, **kwargs):
             cost_dict[col] = np.mean(((sim - tgt)/tgt) ** 2)
         return cost_dict
 
-def enforce_constraints(y_df: pd.DataFrame, constraints: list = None,
-                        weight_default: float = 50, **kwargs) -> dict:
+def enforce_constraints(y_df: pd.DataFrame = None, constraints: list = None,
+                        weight_default: float = 50, param_dict: dict = None, **kwargs) -> dict:
     """
-    Evaluate constraint violations on y_df and return a dict of penalty entries.
+    Evaluate constraint violations on y_df and/or param_dict and return a dict of penalty entries.
 
-    Supports constraint dicts with types 'col' | 'comb' | 'custom'. Uses
-    exponential_penalty and supports either separate 'lower'/'upper' or a box
+    Supports constraint dicts with types:
+    - 'col': constraint on a single column of y_df
+    - 'comb': linear combination of columns in y_df
+    - 'custom': custom function applied to y_df
+    - 'param': constraint on a single decision variable
+    - 'param_comb': linear combination of decision variables
+    - 'param_custom': custom function applied to param_dict
+    
+    Uses exponential_penalty and supports either separate 'lower'/'upper' or a box
     'bounds' = [lower, upper].
     """
     penalty_dict = {}
@@ -104,6 +111,8 @@ def enforce_constraints(y_df: pd.DataFrame, constraints: list = None,
 
         # compute the series to check
         if ctype == 'col':
+            if y_df is None:
+                raise ValueError("y_df is required for constraint type 'col'")
             col = c['col']
             if col not in y_df.columns:
                 penalty_dict[f'penalty_{name}'] = float('inf')
@@ -111,6 +120,8 @@ def enforce_constraints(y_df: pd.DataFrame, constraints: list = None,
             series = y_df[col].to_numpy()
 
         elif ctype == 'comb':
+            if y_df is None:
+                raise ValueError("y_df is required for constraint type 'comb'")
             cols = c['cols']
             coeffs = c.get('coeffs', [1.0] * len(cols))
             if any(col not in y_df.columns for col in cols):
@@ -122,6 +133,8 @@ def enforce_constraints(y_df: pd.DataFrame, constraints: list = None,
                 series += coef * a
 
         elif ctype == 'custom':
+            if y_df is None:
+                raise ValueError("y_df is required for constraint type 'custom'")
             fn = c.get('fn', None)
             if fn is None or not callable(fn):
                 raise ValueError("Custom constraint requires a callable 'fn' returning per-row values or a scalar")
@@ -134,6 +147,44 @@ def enforce_constraints(y_df: pd.DataFrame, constraints: list = None,
                 raise ValueError(
                     f"Custom constraint function returned array of length {series.shape[0]}, expected {len(y_df)} or a scalar"
                 )
+
+        elif ctype == 'param':
+            if param_dict is None:
+                raise ValueError("param_dict is required for constraint type 'param'")
+            param_key = c['param']
+            if param_key not in param_dict:
+                penalty_dict[f'penalty_{name}'] = float('inf')
+                continue
+            # Single scalar value for a parameter
+            series = np.array([param_dict[param_key]])
+
+        elif ctype == 'param_comb':
+            if param_dict is None:
+                raise ValueError("param_dict is required for constraint type 'param_comb'")
+            params = c['params']
+            coeffs = c.get('coeffs', [1.0] * len(params))
+            constant = c.get('constant', 0.0)
+            if any(p not in param_dict for p in params):
+                penalty_dict[f'penalty_{name}'] = float('inf')
+                continue
+            # Linear combination: sum(coeffs[i] * param_dict[params[i]]) + constant
+            value = constant
+            for p, coef in zip(params, coeffs):
+                value += coef * param_dict[p]
+            series = np.array([value])
+
+        elif ctype == 'param_custom':
+            if param_dict is None:
+                raise ValueError("param_dict is required for constraint type 'param_custom'")
+            fn = c.get('fn', None)
+            if fn is None or not callable(fn):
+                raise ValueError("Custom parameter constraint requires a callable 'fn' returning a scalar or array")
+            result = fn(param_dict)
+            series = np.asarray(result)
+            # If fn returns a scalar, treat as single-element array
+            if series.ndim == 0:
+                series = np.array([series])
+
         else:
             raise ValueError(f"Unknown constraint type '{ctype}'")
 
@@ -212,7 +263,7 @@ def min_error_constrained(y_df: pd.DataFrame, target_values: pd.DataFrame, const
         cost_dict[col] = float(np.mean(((sim - tgt)/tgt) ** 2))
 
     # Evaluate constraints (if any) via reusable helper
-    penalties = enforce_constraints(y_df, constraints, weight_default, **kwargs)
+    penalties = enforce_constraints(y_df = y_df, constraints=constraints, weight_default=weight_default, **kwargs)
     if penalties:
         total_base = sum(cost_dict.values()) if cost_dict else 0.0
         total_pen = sum(penalties.values())
@@ -288,6 +339,7 @@ class modelica_optimizer:
             # modelica_integrator succeeded, now call cost_function
             try:
                 # Call the cost function: pass simulation dataframe, cost args and integrator kwargs
+                self.cost_args['param_dict'] = param_dict # Add to cost args the param_dict for constraint enforcement if needed
                 cost_dict = self.cost_function(self.y_df, **(self.cost_args or {}), **(self.integrator_kwargs or {}))
                 
                 # If constraints provided and not already applied by the base function, append penalties here
@@ -299,7 +351,7 @@ class modelica_optimizer:
                     if constraints and not has_penalties:
                         weight_default = self.cost_args.get('weight_default', 50)
                         log_flag = self.integrator_kwargs.get('log', True)
-                        penalties = enforce_constraints(self.y_df, constraints, weight_default, log=log_flag)
+                        penalties = enforce_constraints(y_df = self.y_df, param_dict = param_dict, constraints=constraints, weight_default=weight_default, log=log_flag)
                         if penalties:
                             cost_dict.update(penalties)
                     total_cost = sum(cost_dict.values())

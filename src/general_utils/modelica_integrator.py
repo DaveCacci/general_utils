@@ -53,8 +53,8 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
     > mo_path: string of the path where the modelica file is located
     > ModelName: string of the model name inside the modelica file
     > folder_name: string of the temporary folder to save results (within the current working directory)
-    > x_dict is to set parameters
-    > scale_dict are the scales of the parameters (the values in param_dict are DIVIDED by these scales before being set in the model)
+    > param_dict contains the keys and values to be set inside the Modelica model
+    > param_scale_dict are the scales of the parameters (the values in param_dict are DIVIDED by these scales before being set in the model)
     > x0_dict is to set initial conditions
     > time_interval: float of seconds for the simulation intervals
     > start_time: integer of seconds for the simulation start time #delta_seconds #It starts where I cut the combi for AM2H...
@@ -77,6 +77,13 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
     > final_states_dict: dictionary containing the final states extracted from the simulation.
     > mat_file: DyMat file object containing the simulation results.
 
+    Note: In Modelica, there MUST be present inside 'model_name' a declaration of the param_dict.keys(), for each key, as:
+        "parameter Real param_dict_key = my_nominal_value;"
+        Then, to propagate param_dict.values() set by this code inside the sub-models present inside 'model_name', 
+        override the values of the true parameter names present in each sub-model as: 
+        "Library.Sub_Model my_submodel(true_param_name = param_dict_key);"
+        This is the only viable way to override from Python the "my_nominal_value" specified in Modelica with the value present in "param_dict" for the "param_dict_key" key.   
+    Note: to set 'boolean' or non-numeric parameters, set them as strings in x0_dict, e.g. {"my_boolean_param": "true"} or {"my_string_param": '"my_string_value"'}.
     Note: if time_interval is less than 1, a different function shall be used to create the dataframe with timestamps.
         This is to ensure that the timestamps are generated correctly for high-frequency simulations i.e. sub-second intervals.
     Note: The .mos and .log files are created inside the temporary folder. Check them for debugging purposes.
