@@ -17,7 +17,7 @@ def generate_parameter_samples(
     random_state: Optional[int] = None,
     max_rejection_factor: float = 5.0,
     clip_outside: bool = False
-) -> np.ndarray:
+) -> Tuple[np.ndarray, Dict]:
     """
     Generate parameter sample matrix given bounds and a specified sampling strategy.
 
@@ -37,7 +37,8 @@ def generate_parameter_samples(
     n_samples : int
         Target number of samples (final rows) for ALL methods.
         For Saltelli, this is the desired final total; the internal Saltelli base size is derived
-        and the result is trimmed or expanded (never expanded beyond achievable) to match.
+        and the result is trimmed or expanded (never expanded beyond achievable) to match. Ideally n_samples/(2 * len(x_names) + 2) and n_samples/(len(x_names) + 2) is a power of 2!!
+        It is thus adviced to set alpha and then n_samples = 2**alpha*(2 * len(x_names) + 2) or 2**alpha*(len(x_names) + 2).
     param_distributions : Sequence[Tuple[mean, std]], optional
         Per-parameter (mean, std) tuples used by 'monte_carlo'. If None, mean is midpoint
         of bounds and std = std_fraction * (upper - lower).
@@ -58,8 +59,9 @@ def generate_parameter_samples(
 
     Returns
     -------
-    np.ndarray
+    Tuple[np.ndarray, Dict]
         Sample matrix of shape (n_samples, D) where D = len(x_names).
+        Problem dictionary compatible with SALib.
 
     Raises
     ------
@@ -201,4 +203,4 @@ def generate_parameter_samples(
                     "Enable clip_outside=True to force clipping."
                 )
 
-    return param_values
+    return param_values, problem

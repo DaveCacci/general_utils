@@ -82,7 +82,8 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
         Then, to propagate param_dict.values() set by this code inside the sub-models present inside 'model_name', 
         override the values of the true parameter names present in each sub-model as: 
         "Library.Sub_Model my_submodel(true_param_name = param_dict_key);"
-        This is the only viable way to override from Python the "my_nominal_value" specified in Modelica with the value present in "param_dict" for the "param_dict_key" key.   
+        This is the only viable way to override from Python the "my_nominal_value" specified in Modelica with the value present in "param_dict" for the "param_dict_key" key.
+        The same applies for the initial conditions present in x0_dict!   
     Note: to set 'boolean' or non-numeric parameters, set them as strings in x0_dict, e.g. {"my_boolean_param": "true"} or {"my_string_param": '"my_string_value"'}.
     Note: if time_interval is less than 1, a different function shall be used to create the dataframe with timestamps.
         This is to ensure that the timestamps are generated correctly for high-frequency simulations i.e. sub-second intervals.

@@ -1,3 +1,4 @@
+# FROM NMPC LIBRARY
 from .read_file import *
 from .save_df import *
 from .filter_df_by_timestamp import filter_df_by_timestamp
@@ -10,9 +11,19 @@ from .extract_nearest_row import extract_nearest_row
 from .old_uit_functions import *
 from .cumulative_error import cumulative_error
 from .compute_error import compute_error
+from .sample_and_create_df import sample_and_create_df, sample_df
+from .process_parameters import *
+
+# MODELICA MODEL
 from .modelica_integrator import *
 from .modelica_optimizer import *
 from .save_combi import save_combi
-from .sample_and_create_df import sample_and_create_df, sample_df
-from .process_parameters import *
+
+# PARAMETER SWEEP
 from .param_sampling import generate_parameter_samples
+
+# SENSITIVITY ANALYSIS
+from .replace_sheet_content import replace_sheet_content
+from .postprocess_OATsim_results import *
+from .sens_window import *
+from .parameter_choice import *
