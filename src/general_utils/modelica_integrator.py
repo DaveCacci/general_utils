@@ -45,7 +45,7 @@ def is_string_in_file(file_path, target_string):
 def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_dict: dict, param_scale_dict: dict, x0_dict: dict, time_interval: float, start_time: int, stop_time: int, tolerance: float, 
                     omc_path: str = None, results_sample_interval: int = None, timestamp_start: datetime = datetime.now(), x0_extract_names: list = None, path_to_x0_extract: list = None, path_to_outputs_extract: list = None,
                     outputs_extract_names: list = None, log_datetime: datetime = "", return_dymat: bool = False, log: bool = True,
-                    round_params: int = 8):
+                    round_params: int = 8, output_transformation: list = None, final_output_names: list = None):
     '''
     A function to run Modelica simulations from Python using OpenModelica compiler (omc).
     It creates a temporary folder to store the results, writes a .mos script with the simulation commands,
@@ -131,6 +131,16 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
         logging.warning("time_interval is less than 1 second. This function may not handle sub-second intervals correctly in the dataframe creation.")
     if results_sample_interval < 1:
         logging.warning("results_sample_interval is less than 1 second. This function may not handle sub-second intervals correctly in the dataframe creation.")
+    if output_transformation is not None:
+        if len(output_transformation) != len(outputs_extract_names):
+            raise ValueError("output_transformation length must match outputs_extract_names length.")
+    if final_output_names is not None:
+        if len(final_output_names) != len(outputs_extract_names):
+            raise ValueError("final_output_names length must match outputs_extract_names length.")
+    if output_transformation is None:
+        output_transformation = [lambda x: x for _ in outputs_extract_names] # Default is identity function
+    if final_output_names is None:
+        final_output_names = outputs_extract_names # Default is same as outputs_extract_names
 
     # Define absolute paths for results and script
     absolute_path_results_original = str(model_name)+f'_res.mat' # Where the results will be stored
@@ -209,7 +219,7 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
         else:
             if log:
                 logging.warning(f"Variable {variable_name} not found in the DyMat file.")
-    final_states_dict = dict(zip(x0_dict.keys(), final_states)) # No x0_extract_names because I want to return the dictionary with the same keys as the input x0_dict
+    final_states_dict = dict(zip(x0_dict.keys(), final_states)) # No x0_extract_names because I want to return the dictionary with the same keys as the input x0_dict. Issues with a case in which I fix some initial conditions and do not extract them?
 
     # Extract outputs of interest for pilot
     time_simulation = mat_file.abscissa(f"{path_to_outputs_extract[0]}.{outputs_extract_names[0]}",valuesOnly=True) if path_to_outputs_extract[0] != "" else mat_file.abscissa(f"{outputs_extract_names[0]}",valuesOnly=True)
@@ -238,6 +248,12 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
     if start_time == 0:
         y_discrete = [np.insert(arr, 0, val) for arr, val in zip(y_discrete, [y[i][0] for i in range(len(y))])]
     y_df = create_dataframe_sec(outputs_extract_names, y_discrete, timestamp_start, results_sample_interval)
+
+    # Do output transformations if any provided (added on 27.11.2025)
+    y_values = [y_df[col].values for col in y_df.columns if col != 'Timestamp']
+    y_values = [func(val) for func, val in zip(output_transformation, y_values)]
+    # Rebuild y_df with transformed values and different names using final_output_names
+    y_df = create_dataframe(final_output_names, y_values, y_df['Timestamp'].iloc[0])
 
     # Return to the original directory
     os.chdir(original_dir)

@@ -1,4 +1,5 @@
 from .modelica_integrator import modelica_integrator
+from .create_dataframe import create_dataframe
 from scipy.optimize import differential_evolution, minimize
 import numpy as np
 import psutil
@@ -273,20 +274,59 @@ def min_error_constrained(y_df: pd.DataFrame, target_values: pd.DataFrame, const
         cost_dict.update(penalties)
     return cost_dict
 
-class modelica_optimizer:
-    """Class wrapper for optimizing Modelica model parameters.
-
-    The optimizer constructs a param_dict for each evaluation and forwards
-    it to `modelica_integrator` via `integrator_kwargs` (which must include
-    all required integrator inputs except `param_dict`). The cost function is
-    called with the simulation DataFrame and any cost-specific kwargs.
+class modelica_optimizer_:
+    """Class wrapper for optimizing Modelica model parameters using gradient-free optimization algorithms (Differential Evolution, Nelder-Mead). 
+    The optimizer constructs a param_dict for each evaluation and forwards it to `modelica_integrator` via `integrator_kwargs` 
+    (which must include all required integrator inputs except `param_dict`). 
+    The cost function is called giving as input the DataFrame of simulation outputs and any cost-specific kwargs.
+    Supports single-model and multi-model chain optimization with automatic state propagation between models (e.g. for sequential batch processes or 
+    a pilot-scale reactor that inoculates batches).
     """
 
     def __init__(self, cost_function: callable, initial_guesses: np.ndarray, param_bounds: dict,
                     cost_args: dict = None, integrator_kwargs: dict = None):
         """Initialize the optimizer.
-
-        See module-level docstrings for parameter meanings.
+        Parameters:
+        - cost_function: callable that computes cost dict from simulation DataFrame. Signature: cost_function(y_df: pd.DataFrame, **cost_args) -> dict
+        - initial_guesses: array-like of initial parameter guesses.
+        - param_bounds: dict or sequence defining parameter bounds. {key: (min, max)} or [(min1, max1), (min2, max2), ...].
+        - cost_args: optional dict of additional kwargs for cost_function.
+            Common keys:
+            - 'target_values': pd.DataFrame of measurement data for comparison
+            - 'constraints': List of constraint dicts (see enforce_constraints)
+            - 'weight_default': Default penalty weight for constraint violations (default: 50)
+            - 'return_mode': Custom arg for user's cost function (e.g., 'sMSE', 'all')
+            Multi-model keys:
+            - 'model_chain': List of model-specific cost args dicts (one per model)
+        - integrator_kwargs: optional dict of kwargs for modelica_integrator (excluding 'param_dict').
+            Required keys (single model):
+                -'mo_path': Path to .mo file
+                -'model_name': Fully qualified Modelica model name (e.g., 'MyPackage.MyModel')
+                -'folder_name': Output directory for simulation files
+                -'param_scale_dict': Dict mapping param names to scale factors (for rescaling)
+                -'x0_dict': Initial state values dict
+                -'time_interval', 'start_time', 'stop_time', 'tolerance': Simulation settings
+            Optional keys:
+                - 'final_output_names': List of output column names (overrides outputs_extract_names)
+                - 'output_transformation': List of lambdas to transform raw outputs
+                - 'log': Boolean, enable logging (default: True)
+            Multi-model keys:
+                - 'model_chain': List of model-specific integrator kwarg dicts (one per model)
+                - 'chain_mode': 'sequential' (default) or 'parallel'
+                    - 'sequential': Model i+1 initialized from final states of model i
+                    - 'parallel': All models after first initialized from first model's final states
+        
+        Attributes:
+        - self.iter_df: DataFrame storing parameter values and cost dict at each evaluation.
+            Columns include:
+                - Parameter columns (original units after rescaling)
+                - Cost metric columns (from cost_function return dict)
+                - 'total_cost': Sum of all cost metrics
+                - Final state columns (if multi-model chain)
+        - self.y_df: DataFrame storing the latest simulation outputs.
+            - Single model: DataFrame
+            - Multi-model: List of DataFrames (one per model)
+        - self.final_states: Stores the latest simulation final states (for multi-model chains).
         """
         self.cost_function = cost_function
         self.initial_guesses = np.asarray(initial_guesses)
@@ -296,24 +336,43 @@ class modelica_optimizer:
         self.integrator_kwargs = integrator_kwargs or {}
         # cost-specific kwargs
         self.cost_args = cost_args or {}
+        # If model_chain is in one between intergrator_kwargs and cost_args, must be also in the other, else return error during optimization
+        model_chain_integrator = self.integrator_kwargs.get('model_chain', None)
+        model_chain_cost = self.cost_args.get('model_chain', None)
+        if (model_chain_integrator is None) != (model_chain_cost is None):
+            raise ValueError("If 'model_chain' is provided in either integrator_kwargs or cost_args, it must be provided in both.")
+        # Ensure that model_chain in both integrator_kwargs and cost_args have the same length
+        if model_chain_integrator is not None and model_chain_cost is not None:
+            if len(model_chain_integrator) != len(model_chain_cost):
+                raise ValueError("'model_chain' in integrator_kwargs and cost_args must have the same length.")
 
         # DataFrame that will store param values and cost dictionary at each call
         self.iter_df = pd.DataFrame()
         # Attribute to store the latest simulation DataFrame
         self.y_df = pd.DataFrame()
+        # Attribute to store the latest simulation final states (for multi-model chains)
+        self.final_states = None
 
-    def cost_function_handler(self, param_values: np.ndarray):
-        """Objective function for the optimizer.
+    def cost_function_handler(self, param_values: np.ndarray) -> float:
+        """Internal objective function called by optimization algorithms. 
+        Handles parameter scaling, model integration, cost computation, constraint enforcement, and iteration logging.
+        
         Parameters:
-        - param_values is an array-like matching the order of keys in param_bounds
-        when param_bounds is a dict, or the order of the provided sequence when
-        param_bounds is a sequence.
+        - param_values is an array-like matching the order of keys in param_bounds when param_bounds is a dict, 
+        or the order of the provided sequence when param_bounds is a sequence. Parameter vector from optimizer (scaled units).
+        
         Returns:
-        - A float representing the cost for the given parameter values.
+        - A float representing the cost for the given parameter values. Total cost (sum of all cost metrics).
+        
         Note: if self.iter_df is empty, there will be an issue if modelica integrator fails at the very first run.
         If the outputs the user is computing the errors of are different from the one extracted from modelica_integrator and/or
         there are constraints (columns added to self.iter_df), an issue in adding rows to self.iter_df will arise as soon as the integrator will not fail anymore.
         Anyway, the user can take the last parameter values that doesn't make the integrator fail and restart again iterations!
+
+        Note: user may decide to extend the current implementation to consider the extraction of multiple metrics from self.cost_function 
+            (e.g. for storage in self.iter_df as previously done for 'cumulative_error' called with attribute 'return_mode'=='all').
+
+        Note: user may decide to add a "logging.info" message at the end of "cost_function_handler" to print the current parameter values and total cost at each function evaluation! 
         """
         param_values = process_array(np.asarray(param_values), self.initial_guesses)
         param_dict = {key: value for key, value in zip(self.param_bounds.keys(), param_values)} if isinstance(self.param_bounds, dict) else {i: v for i, v in enumerate(param_values)}
@@ -321,45 +380,191 @@ class modelica_optimizer:
         # Ensure the integrator kwargs are present
         self._validate_integrator_kwargs()
 
+        # ✨ NEW: Check if model_chain exists in integrator_kwargs
+        model_chain = self.integrator_kwargs.get('model_chain', None)
+        cost_chain = self.cost_args.get('model_chain', None) if self.cost_args else None
+
         try:
-            y_df, _ = modelica_integrator(param_dict=param_dict, **self.integrator_kwargs)
-            # Add y_df to attribute for later access
-            self.y_df = y_df
+            # START INTEGRATION PART ##############################################################
+            if model_chain is None:
+                # Single model case (backward compatible)
+                y_df, _ = modelica_integrator(param_dict=param_dict, **self.integrator_kwargs)
+                self.y_df = y_df
+            else:
+                # ✨ NEW: Multi-model case: chain models sequentially
+                y_dfs = []  # Store all model outputs
+                final_states = None
+                first_model_final_states = None
+                # ✨ NEW: Check initialization mode: 'sequential' or 'parallel' (default: sequential)
+                chain_mode = self.integrator_kwargs.get('chain_mode', 'sequential')
+                for i, model_config in enumerate(model_chain):
+                    # Merge base integrator_kwargs with model-specific config
+                    model_kwargs = {**self.integrator_kwargs}
+                    model_kwargs.update(model_config)
+                    # ✨ NEW: For models after the first, initialize with previous states
+                    if i > 0 and final_states is not None:
+                        if chain_mode == 'sequential':
+                            # Sequential: each model initializes from the previous one
+                            model_kwargs['x0_dict'] = final_states
+                        elif chain_mode == 'parallel':
+                            # Parallel: all models after the first use first model's final states
+                            model_kwargs['x0_dict'] = first_model_final_states
+                        else:
+                            raise ValueError(f"Unknown chain_mode '{chain_mode}'. Use 'sequential' or 'parallel'.")
+                    # Remove 'model_chain' and 'chain_mode' from kwargs before passing to integrator
+                    model_kwargs.pop('model_chain', None)
+                    model_kwargs.pop('chain_mode', None)
+                    # Run integration
+                    y_df_i, final_states = modelica_integrator(param_dict=param_dict, **model_kwargs)
+                    y_dfs.append(y_df_i)
+                    # ✨ NEW: Store first model's final states for parallel mode
+                    if i == 0:
+                        first_model_final_states = final_states
+                # ✨ NEW: Store all outputs as list
+                self.y_df = y_dfs
+                self.final_states = first_model_final_states # Extend this as needed for more complex use cases
+            # END INTEGRATION PART ##############################################################
+        
         except (Exception, ValueError, psutil.TimeoutExpired) as e:
+            # START HANDLE EXCEPTION TO INTEGRATION PART ########################################
             logging.error(f"Error occurred during Modelica integration: {e}\n"
                           "The values of the cost dictionary will be set to infinity for this evaluation: the output names in the cost function must match the ones extracted by the modelica integrator to guarantee continuity.")
-            outputs_extract_names = self.integrator_kwargs.get('outputs_extract_names', []) # This can actually be different than the all ones extracted by modelica integrator
             # If self.iter_df is not empty, extract the keys from there to ensure continuity
             if not self.iter_df.empty:
-                cost_dict = {name: 1e12 for name in self.iter_df.columns} # 1e12 is used instead of np.inf to avoid overflow in some optimizers
+                cost_dict = {name: 1e12 for name in self.iter_df.columns if name not in self.param_bounds.keys() and name != 'total_cost' and not name.startswith('param_')} # 1e12 is used instead of np.inf to avoid overflow in some optimizers
             else:
-                cost_dict = {name: 1e12 for name in outputs_extract_names} # This can lead the code to stop when modelica does not fail anymore but failed at first iterations!!
+                # Build cost_dict keys based on model_chain or single model
+                if model_chain is None:
+                    # Single model: use outputs_extract_names or final_output_names
+                    outputs_extract_names = self.integrator_kwargs.get('outputs_extract_names', [])
+                    final_output_names = self.integrator_kwargs.get('final_output_names', [])
+                    if not final_output_names:
+                        final_output_names = outputs_extract_names
+                    cost_dict = {name: 1e12 for name in final_output_names}
+                else:
+                    # Multi-model: combine keys from all models in chain
+                    cost_dict = {}
+                    all_keys = []
+                    # Collect all output names from all models
+                    for i, model_config in enumerate(model_chain):
+                        model_outputs = model_config.get('final_output_names', model_config.get('outputs_extract_names', []))
+                        all_keys.extend(model_outputs)
+                    # Check for duplicates and add suffix accordingly
+                    key_counts = {}
+                    for k in all_keys:
+                        key_counts[k] = key_counts.get(k, 0) + 1
+                    # Build cost_dict with appropriate naming
+                    key_index = {}
+                    for k in all_keys:
+                        if key_counts[k] > 1:
+                            # Duplicate key: add index suffix
+                            idx = key_index.get(k, 0)
+                            cost_dict[f"{k}_{idx}"] = 1e12
+                            key_index[k] = idx + 1
+                        else:
+                            # Unique key: keep as is
+                            cost_dict[k] = 1e12
             total_cost = sum(cost_dict.values())
+            # END EXCEPTION TO INTEGRATION PART #################################################
+        
         else:
+            # START COST AND CONSTRAINT FUNCTION CALL ###########################################
             # modelica_integrator succeeded, now call cost_function
             try:
-                # Call the cost function: pass simulation dataframe, cost args and integrator kwargs
-                self.cost_args['param_dict'] = param_dict # Add to cost args the param_dict for constraint enforcement if needed
-                cost_dict = self.cost_function(self.y_df, **(self.cost_args or {}), **(self.integrator_kwargs or {}))
-                
-                # If constraints provided and not already applied by the base function, append penalties here
+                self.cost_args['param_dict'] = param_dict
+                if model_chain is None:
+                    # Single model: call cost function once (unchanged behavior)
+                    cost_dict = self.cost_function(self.y_df, **(self.cost_args or {}), **(self.integrator_kwargs or {}))
+                    # If constraints provided and not already applied by the base function, append penalties here
+                    if isinstance(cost_dict, dict):
+                        has_penalties = any(str(k).startswith('penalty_') for k in cost_dict.keys())
+                        constraints = None
+                        if isinstance(self.cost_args, dict):
+                            constraints = self.cost_args.get('constraints')
+                        if constraints and not has_penalties:
+                            weight_default = self.cost_args.get('weight_default', 50)
+                            log_flag = self.integrator_kwargs.get('log', True)
+                            penalties = enforce_constraints(y_df = self.y_df, param_dict = param_dict, constraints=constraints, weight_default=weight_default, log=log_flag)
+                            if penalties:
+                                cost_dict.update(penalties)
+                else:
+                    # ✨ NEW: Multi-model: call cost function separately for each model
+                    cost_dict = {}
+                    all_cost_dicts = []  # Store all cost_dict_i to check for duplicates
+                    # First pass: collect all cost dicts
+                    for i, (y_df_i, model_config) in enumerate(zip(self.y_df, model_chain)):
+                        # Start with common cost_args (excluding 'model_chain')
+                        cost_args_i = {k: v for k, v in self.cost_args.items() if k != 'model_chain'}
+                        # Override/extend with model-specific cost_args
+                        if cost_chain and i < len(cost_chain):
+                            cost_args_i.update(cost_chain[i])
+                        cost_args_i['param_dict'] = param_dict
+                        # Extract model-specific integrator_kwargs (for compatibility with cost function signature)
+                        integrator_kwargs_i = {**self.integrator_kwargs}
+                        integrator_kwargs_i.update(model_config)
+                        integrator_kwargs_i.pop('model_chain', None)
+                        integrator_kwargs_i.pop('chain_mode', None)
+                        # Call cost function for this model
+                        cost_dict_i = self.cost_function(y_df_i, **cost_args_i, **integrator_kwargs_i)
+                        # Handle constraints for this model
+                        constraints_i = cost_args_i.get('constraints', None)
+                        if constraints_i:
+                            has_penalties = any(str(k).startswith('penalty_') for k in cost_dict_i.keys()) if isinstance(cost_dict_i, dict) else False
+                            if not has_penalties:
+                                weight_default = cost_args_i.get('weight_default', 50)
+                                log_flag = integrator_kwargs_i.get('log', True)
+                                penalties = enforce_constraints(y_df=y_df_i, param_dict=param_dict, 
+                                                            constraints=constraints_i, weight_default=weight_default, log=log_flag)
+                                if penalties and isinstance(cost_dict_i, dict):
+                                    cost_dict_i.update(penalties)
+                        all_cost_dicts.append(cost_dict_i)
+                    # Second pass: identify duplicate keys across models
+                    key_counts = {}
+                    for cost_dict_i in all_cost_dicts:
+                        if isinstance(cost_dict_i, dict):
+                            for k in cost_dict_i.keys():
+                                key_counts[k] = key_counts.get(k, 0) + 1
+                    # Third pass: merge with appropriate naming
+                    for i, cost_dict_i in enumerate(all_cost_dicts):
+                        if isinstance(cost_dict_i, dict):
+                            for k, v in cost_dict_i.items():
+                                # Only add suffix if key appears in multiple models
+                                if key_counts[k] > 1:
+                                    final_key = f"{k}_{i}"
+                                else:
+                                    final_key = k
+                                cost_dict[final_key] = v
+                        else:
+                            # Scalar cost: use model name
+                            model_config = model_chain[i]
+                            model_name = model_config.get('model_name', f'model_{i}')
+                            cost_dict[f"{model_name}_cost"] = cost_dict_i
+                # ✨ NEW: Sum all costs (works for both single and multi-model)
+                # After all models are processed, flatten cost_dict if it contains nested dicts
                 if isinstance(cost_dict, dict):
-                    has_penalties = any(str(k).startswith('penalty_') for k in cost_dict.keys())
-                    constraints = None
-                    if isinstance(self.cost_args, dict):
-                        constraints = self.cost_args.get('constraints')
-                    if constraints and not has_penalties:
-                        weight_default = self.cost_args.get('weight_default', 50)
-                        log_flag = self.integrator_kwargs.get('log', True)
-                        penalties = enforce_constraints(y_df = self.y_df, param_dict = param_dict, constraints=constraints, weight_default=weight_default, log=log_flag)
-                        if penalties:
-                            cost_dict.update(penalties)
-                    total_cost = sum(cost_dict.values())
+                    flattened_cost = {}
+                    for key, value in cost_dict.items():
+                        if isinstance(value, dict):
+                            # Nested dict: flatten with prefixed keys
+                            for sub_key, sub_value in value.items():
+                                flattened_cost[f"{key}_{sub_key}"] = sub_value
+                        elif isinstance(value, (int, float, np.number)):
+                            # Scalar value: keep as is
+                            flattened_cost[key] = value
+                        else:
+                            # Other types (e.g., tuple): try to sum if iterable
+                            try:
+                                flattened_cost[key] = sum(value) if hasattr(value, '__iter__') else value
+                            except TypeError:
+                                flattened_cost[key] = value
+                    total_cost = sum(v for v in flattened_cost.values() if isinstance(v, (int, float, np.number)))
+                    cost_dict = flattened_cost
                 else:
                     total_cost = cost_dict
             except Exception as e:
                 raise ValueError(f"Error occurred during self.cost_function call: {e}")
-
+            # END COST AND CONSTRAINT FUNCTION CALL #############################################
+        
         # Record evaluation in iter_df: merge params and costs into one flat dict
         record = {}
         # Extract param_scale_dict from integrator kwargs to recompute original parameter values
@@ -370,16 +575,21 @@ class modelica_optimizer:
                 record[f'param_{k}'] = v / param_scale_dict.get(k)
             else:
                 record[k] = v / param_scale_dict.get(k)
-
+        # Add also self.final_states if available (for multi-model chains)
+        if self.final_states is not None:
+            record.update(self.final_states)
         # Cost columns
         if isinstance(cost_dict, dict):
             for ck, cv in cost_dict.items():
-                record[ck] = cv
+                if isinstance(cv, (int, float, np.number)):
+                    record[ck] = cv
+                else:
+                    # Skip non-numeric values or log warning
+                    logging.warning(f"Skipping non-numeric cost entry '{ck}': {type(cv)}")
         else:
             record['cost'] = cost_dict
-
         record['total_cost'] = total_cost
-
+        
         # Append to DataFrame
         self.iter_df = pd.concat([self.iter_df, pd.DataFrame([record])], ignore_index=True)
 
@@ -390,14 +600,45 @@ class modelica_optimizer:
 
         Raises a ValueError listing missing keys if any required ones are absent.
         """
-        required = [
-            'mo_path', 'model_name', 'folder_name', 'param_scale_dict',
-            'x0_dict', 'time_interval', 'start_time', 'stop_time', 'tolerance'
-        ]
-        missing = [k for k in required if k not in self.integrator_kwargs]
-        if missing:
-            raise ValueError(f"Missing required modelica_integrator kwargs: {missing}. "
+        model_chain = self.integrator_kwargs.get('model_chain', None)
+        
+        if model_chain is None:
+            # Single model: validate at top level
+            required = [
+                'mo_path', 'model_name', 'folder_name', 'param_scale_dict',
+                'x0_dict', 'time_interval', 'start_time', 'stop_time', 'tolerance'
+            ]
+            missing = [k for k in required if k not in self.integrator_kwargs]
+            if missing:
+                raise ValueError(f"Missing required modelica_integrator kwargs: {missing}. "
                                 "Provide these (as integrator_kwargs) when constructing the optimizer; they are forwarded to the integrator.")
+        else:
+            # Multi-model: validate each model in the chain has required keys
+            # Common keys can be at top level or in each model config
+            model_specific_required = ['mo_path', 'model_name', 'time_interval', 'start_time', 'stop_time', 'tolerance']
+            global_required = ['folder_name', 'param_scale_dict']
+            
+            # Check global required keys
+            missing_global = [k for k in global_required if k not in self.integrator_kwargs]
+            if missing_global:
+                raise ValueError(f"Missing required global integrator_kwargs: {missing_global}. "
+                            "These must be provided at the top level when using model_chain.")
+            
+            # Check each model config
+            for i, model_config in enumerate(model_chain):
+                missing_model = []
+                for k in model_specific_required:
+                    # Check if key is in model_config or inherited from top level
+                    if k not in model_config and k not in self.integrator_kwargs:
+                        missing_model.append(k)
+                
+                if missing_model:
+                    raise ValueError(f"Model {i} in model_chain is missing required keys: {missing_model}. "
+                                f"Provide these either in model_chain[{i}] or at the top level of integrator_kwargs.")
+                
+                # x0_dict is only required for the first model
+                if i == 0 and 'x0_dict' not in model_config and 'x0_dict' not in self.integrator_kwargs:
+                    raise ValueError(f"First model in model_chain requires 'x0_dict' for initialization.")
 
     def _build_bounds(self):
         """Return bounds as a list of (min, max) pairs suitable for SciPy.
