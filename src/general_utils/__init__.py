@@ -27,3 +27,8 @@ from .replace_sheet_content import replace_sheet_content
 from .postprocess_OATsim_results import *
 from .sens_window import *
 from .parameter_choice import *
+
+# UNCERTAINTY QUANTIFICATION
+from .fim import *
+from .t_test import T_test
+from .lin_unc_prop import lin_unc_prop

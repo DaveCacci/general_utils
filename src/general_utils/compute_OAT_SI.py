@@ -5,6 +5,7 @@ import os
 import pandas as pd
 import numpy as np
 import shutil
+from .postprocess_OATsim_results import filter_on_offlinedata
 
 def actual_SI_computation(output_1: np.ndarray, output_2: np.ndarray, mean_value: np.ndarray, uncertain_param_names: list, 
                           uncertain_param_values: list, formulation: str, delta_plus: float, delta_minus: float, log: bool = False) -> np.ndarray:
@@ -51,19 +52,26 @@ def actual_SI_computation(output_1: np.ndarray, output_2: np.ndarray, mean_value
     return sensitivity_list
 
 def compute_OAT_SI(modelname: str, current_date: str, date_string: str, abs_deltap: float, uncertain_param_names: list, uncertain_param_values: list, output_names: list, 
-                   formulation='rr', delta_method = 'CD', directory = os.getcwd(), log=True):
+                   formulation='rr', delta_method = 'CD', y_df_data_off: pd.DataFrame=None, var_couples_list_offline: list=None, directory = os.getcwd(), log=True):
     '''
     Compute One-At-a-Time Sensitivity Indices based on precomputed model outputs.
     Parameters:
     - modelname: Name of the model.
     - current_date: Current date string for file naming.
     - date_string: Date string for file naming.
-    - abs_deltap: Absolute percentage change in parameters (e.g., 0.01 for 1%).
+    - abs_deltap: Absolute value of the relative percentage change in parameters (e.g., 0.01 for 1% and -1%).
     - uncertain_param_names: List of names of uncertain parameters.
     - uncertain_param_values: List of nominal values of uncertain parameters.
     - output_names: List of output variable names to compute sensitivity for.
     - formulation: Sensitivity index formulation ('rr' for Relative-Relative, 'aa' for Absolute-Absolute, 'ar' for Absolute-Relative, 'ra' for Relative-Absolute).
+                   aa is computed as SI = $d(y)/d(\theta)$
+                   rr is computed as SI = (d(y)/y_{nom}) / (d(\theta)/\theta_{nom})
+                   ar is computed as SI = $d(y) / (d(\theta)/\theta_{nom})$
+                   ra is computed as SI = (d(y)/y_{nom}) / d(\theta)
+                   Note: consider that the entries of abs_deltap are relative variations i.e. (d(\theta)/\theta_{nom})!
     - delta_method: Method for delta computation ('FD+' for Finite Difference Plus, 'FD-' for Finite Difference Minus, 'CD' for Central Difference).
+    - y_df_data_off (pd.DataFrame, optional): DataFrame containing offline data for filtering. Defaults to None.
+    - var_couples_list_offline (list, optional): List of variable couples for offline data filtering. Defaults to None.
     - directory: Directory where input/output files are located.
     - log: Boolean flag to enable logging.
     Returns:
@@ -149,6 +157,15 @@ def compute_OAT_SI(modelname: str, current_date: str, date_string: str, abs_delt
             sensitivity_df.to_excel(writer1, sheet_name=output_name, index=False)
             if log:
                 logging.info(f'Sensitivity local with {delta_method} method and "{formulation}" formulation for {output_name} saved to {output_file_formulation}')
+
+    # If offline data is provided, filter the reorganized files accordingly
+    if y_df_data_off is not None and not y_df_data_off.empty and var_couples_list_offline is not None and len(var_couples_list_offline) > 0:
+        logging.info("y_df_data_off and var_couples_list_offline are not empty.")
+        input_file = output_file_formulation
+        output_path = os.path.join(directory, f'{modelname}_Discontinuous_value_{formulation}_{string}_{current_date}_{date_string}.xlsx')
+        filter_on_offlinedata(input_file, output_path, y_df_data_off, var_couples_list_offline, log)
+    else:
+        logging.info("y_df_data_off or var_couples_list_offline is empty or not provided.")
             
     # Copy to a fine without current_date and date_string in filename for online applications
     shutil.copy(output_file_formulation, output_file_copy)

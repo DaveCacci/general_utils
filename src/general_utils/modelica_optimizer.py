@@ -274,7 +274,7 @@ def min_error_constrained(y_df: pd.DataFrame, target_values: pd.DataFrame, const
         cost_dict.update(penalties)
     return cost_dict
 
-class modelica_optimizer_:
+class modelica_optimizer:
     """Class wrapper for optimizing Modelica model parameters using gradient-free optimization algorithms (Differential Evolution, Nelder-Mead). 
     The optimizer constructs a param_dict for each evaluation and forwards it to `modelica_integrator` via `integrator_kwargs` 
     (which must include all required integrator inputs except `param_dict`). 

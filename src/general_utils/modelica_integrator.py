@@ -113,18 +113,26 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
         results_sample_interval = time_interval
     # Return an error if x0_extract_names and path_to_x0_extract have different lengths
     if len(x0_extract_names) != len(path_to_x0_extract):
+        # Return to the original directory
+        os.chdir(original_dir)
         raise ValueError("x0_extract_names and path_to_x0_extract must have the same length.")
     # Return an error if param_dict and param_scale_dict have different lengths
     if len(param_dict) != len(param_scale_dict):
+        # Return to the original directory
+        os.chdir(original_dir)
         raise ValueError("param_dict and param_scale_dict must have the same length.")
     # Return a warning if x0_dict length is different from x0_extract_names length
     if len(x0_dict) != len(x0_extract_names):
         logging.warning("x0_dict length is different from x0_extract_names length. Make sure this is intentional.")
     # Return an error if outputs_extract_names and path_to_outputs_extract have different lengths
     if len(outputs_extract_names) != len(path_to_outputs_extract):
+        # Return to the original directory
+        os.chdir(original_dir)
         raise ValueError("outputs_extract_names and path_to_outputs_extract must have the same length.")
     # Return an error if the length of outputs_extract_names is zero
     if len(outputs_extract_names) == 0:
+        # Return to the original directory
+        os.chdir(original_dir)
         raise ValueError("outputs_extract_names cannot be empty, must have at least one element.")
     # Return a warning if time_interval or results_sample_interval are less than 1 second
     if time_interval < 1:
@@ -133,9 +141,13 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
         logging.warning("results_sample_interval is less than 1 second. This function may not handle sub-second intervals correctly in the dataframe creation.")
     if output_transformation is not None:
         if len(output_transformation) != len(outputs_extract_names):
+            # Return to the original directory
+            os.chdir(original_dir)
             raise ValueError("output_transformation length must match outputs_extract_names length.")
     if final_output_names is not None:
         if len(final_output_names) != len(outputs_extract_names):
+            # Return to the original directory
+            os.chdir(original_dir)
             raise ValueError("final_output_names length must match outputs_extract_names length.")
     if output_transformation is None:
         output_transformation = [lambda x: x for _ in outputs_extract_names] # Default is identity function
@@ -202,8 +214,12 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
     if success and log:
         logging.info('Successful simulation')
     if not mat_file.names():
+        # Return to the original directory
+        os.chdir(original_dir)
         raise ValueError("DyMat file is empty.")
     if not success:
+        # Return to the original directory
+        os.chdir(original_dir)
         raise ValueError("Failed integrator")
 
     # Extract final states of interest
@@ -253,7 +269,7 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
     y_values = [y_df[col].values for col in y_df.columns if col != 'Timestamp']
     y_values = [func(val) for func, val in zip(output_transformation, y_values)]
     # Rebuild y_df with transformed values and different names using final_output_names
-    y_df = create_dataframe(final_output_names, y_values, y_df['Timestamp'].iloc[0])
+    y_df = create_dataframe_sec(final_output_names, y_values, y_df['Timestamp'].iloc[0], results_sample_interval)
 
     # Return to the original directory
     os.chdir(original_dir)

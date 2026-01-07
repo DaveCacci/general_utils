@@ -111,7 +111,7 @@ def filter_and_save_multiple(modelname, current_date, deltap, start_window, end_
     date_string = f'{start_window.strftime("%d%m%H")}-{end_window.strftime("%d%m%H")}'
     output_names = output_sens_names
     for delta in deltap:
-        data_path=os.path.join(directory, f'{modelname}_Output_{delta}_{current_date}.xlsx')
+        data_path=os.path.join(directory, f'{modelname}_Output_{delta}_{current_date}_{date_string}.xlsx')
         data = pd.read_excel(data_path)
         # Filter y_df based on the time window
         if log:

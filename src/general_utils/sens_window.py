@@ -72,7 +72,16 @@ def rename_columns(df, output_name: str):
     '''
     # Define new columns as old column name removing output name part + "_" just after the output name
     # E.g. "Output1_ParamA" becomes "ParamA"
-    new_columns = {col: col.replace(f"{output_name}_", "") for col in df.columns}
+    # Note 01.12.2025 : modified to remove only leading occurrence of output_name + "_" to avoid issues if parameter names contain output name as substring
+    new_columns = {}
+    prefix = f"{output_name}_"
+    for col in df.columns:
+        if col.startswith(prefix):
+            # remove only the leading occurrence
+            new_columns[col] = col[len(prefix):]
+        else:
+            # remove only the first occurrence anywhere else (if present)
+            new_columns[col] = col.replace(prefix, "", 1)
     return df.rename(columns=new_columns)
 
 #############################################################################################################

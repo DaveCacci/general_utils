@@ -137,7 +137,7 @@ def filter_and_convert_to_time(file_path=None, start_timestamp=None, end_timesta
         if fill_option == "zeros":
             last_row = [0] * len(df.columns)
         elif fill_option == "first_row" and not after_end_df.empty:
-            last_row = first_row_after_cut
+            last_row = df.iloc[-1].to_list() #first_row_after_cut # Modified on 07.01.2026 by Davide Carecci...more correct like this if I want to interpolate lineaarly later on...same result if interpolation step-wise
         elif fill_option == "first_row" and after_end_df.empty:
             last_row = df.iloc[-1].to_list()
         else:
