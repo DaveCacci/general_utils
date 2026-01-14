@@ -71,6 +71,8 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
     > log: boolean to enable or disable logging of info messages.
     > return_dymat: boolean to return also the DyMat file object along with the outputs and final states.
     > round_params: integer to round the parameter values when setting them in the model.
+    > output_transformation: list of functions to apply to each output after extraction. Default is None (no transformation).
+    > final_output_names: list of strings with the final names of the outputs after transformation. Default is None (same as outputs_extract_names).
     Returns:
     -------
     > y_df: pandas DataFrame containing the outputs of interest with timestamps as index.

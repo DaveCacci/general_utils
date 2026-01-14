@@ -35,11 +35,18 @@ def update_process_parameters(file_path: str, new_params: dict):
     with open(file_path, "w") as file:
         json.dump(data, file, indent=4)
 ############################################################################################################
+# Function to save parameters in a new JSON file
+def save_parameters(file_path: str, params: dict):
+    
+    with open(file_path, "w") as file:
+        json.dump(data, file, indent=4)
+############################################################################################################
 # Function to update a specific category of parameters in the JSON file
 def datetime_serializer(obj):
     if isinstance(obj, datetime):
         return obj.strftime('%Y-%m-%d %H:%M:%S')
     raise TypeError(f"Type {type(obj)} not serializable")
+
 def update_parameters(file_path: str, new_params: dict, category: str = None, log: bool = False):
     with open(file_path, "r") as file:
         data = json.load(file)
