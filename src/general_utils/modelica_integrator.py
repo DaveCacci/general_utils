@@ -197,7 +197,16 @@ def modelica_integrator(mo_path: str, model_name: str, folder_name: str, param_d
                 logging.warning(f"Could not delete temporary file {temp_file}: {e}")
         terminate_running_process(f"{model_name}.exe")
         time.sleep(2)  # Wait for the process to terminate completely
-        subprocess.run([omc_path, absolute_path_script], stdout = file)
+
+        try: 
+            subprocess.run([omc_path, absolute_path_script], stdout = file, timeout=900) # Timeout after 15 minutes (adjust based on model complexity)
+        except subprocess.TimeoutExpired:
+            logging.error("Modelica simulation timed out.")
+            terminate_running_process(f"{model_name}.exe")
+            # Return to the original directory
+            os.chdir(original_dir)
+            raise TimeoutError("Modelica simulation timed out.")
+    
     stop = time.time()
     duration = stop-start
     if log:
