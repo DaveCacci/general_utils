@@ -14,9 +14,9 @@ from .compute_error import compute_error
 from .sample_and_create_df import sample_and_create_df, sample_df
 from .process_parameters import *
 from .check_df import *
-from compare_arrays import *
-from replace_nan_with_inf import *
-from round_timestamp import *
+from .compare_arrays import *
+from .replace_nan_with_inf import *
+from .round_timestamp import *
 
 # MODELICA MODEL
 from .modelica_integrator import *
