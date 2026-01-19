@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Callable, Dict, List, Any, Union, Optional
 from .filter_df_by_timestamp import filter_df_by_timestamp
 from .create_and_change_dir import create_and_change_dir
+from scipy.interpolate import interp1d
 
 ##############################################################
 def read_and_split_txt(filename, delimiter='\t', log: bool = False):

@@ -36,6 +36,8 @@ class FlexiblePlotter:
     A flexible plotter that supports datetime and float x-axes, with customizable options.
     All methods show the figure if `show_plot` is True. Externally if False, it is possible to save the plot/s;
     except for the 'generate_plots_with_incremental_variables' method, which saves the plots incrementally.
+    
+    Note: this class at the moment is not able to plot confidence intervals of variables with 'fill_between'!
     """
     default_figsize: Tuple[int, int] = (8, 6)
     default_color: str = "blue"
@@ -47,6 +49,15 @@ class FlexiblePlotter:
     def __post_init__(self):
         self.logger.info('-----------------------------------------------\n')
         self.logger.info('Instantiting FlexiblPlotter class\n')
+
+    def _apply_legend(self, ax, show_legend: bool = True, legend_param: Optional[Dict] = None):
+        """Apply legend if requested, keeping default behavior intact."""
+        if not show_legend:
+            return
+        if legend_param is None:
+            ax.legend(loc="best")
+        else:
+            ax.legend(**legend_param)
 
     def plot(
         self,
@@ -69,6 +80,7 @@ class FlexiblePlotter:
         figsize: Optional[Tuple[int, int]] = None,
         grid: bool = False,  # New parameter for grid,
         show_plot: bool = True, # New parameter for showing the plot or not (for saving purposes)
+        show_legend: bool = True,
         legend_param: Optional[Dict] = None,  # New parameter for legend customization
         layout_param: Optional[Dict] = None  # New parameter for layout customization
     ):
@@ -153,10 +165,7 @@ class FlexiblePlotter:
                 ax.yaxis.set_major_locator(plt.MaxNLocator(y_ticks[i]))
             if grid:
                 ax.grid(True, alpha=0.5)  # Enable grid if specified
-            if legend_param is None:
-                ax.legend(loc="best")
-            else:
-                ax.legend(**legend_param)
+            self._apply_legend(ax, show_legend, legend_param)
 
         if x_axis_format == "datetime":
             for ax in axes:
@@ -200,6 +209,7 @@ class FlexiblePlotter:
         figsize: Optional[Tuple[int, int]] = None,
         grid: bool = False,  # New parameter for grid
         show_plot: bool = True, # New parameter for showing the plot or not (for saving purposes)
+        show_legend: bool = True,
         legend_param: Optional[Dict] = None,  # New parameter for legend customization
         layout_param: Optional[Dict] = None  # New parameter for layout customization
     ):
@@ -276,10 +286,7 @@ class FlexiblePlotter:
             ax.yaxis.set_major_locator(plt.MaxNLocator(y_ticks))
         if grid:
             ax.grid(True, alpha=0.5)  # Enable grid if specified
-        if legend_param is None:
-            ax.legend(loc="best")
-        else:
-            ax.legend(**legend_param)
+        self._apply_legend(ax, show_legend, legend_param)
 
         if x_axis_format == "datetime":
             maj_formatter = x_axis_ticks_format or "%Y-%m-%d %H:%M"
@@ -322,6 +329,7 @@ class FlexiblePlotter:
             figsize: Optional[Tuple[int, int]] = None,
             grid: bool = False,  # New parameter for grid
             show_plot: bool = True, # New parameter for showing the plot or not (for saving purposes)
+            show_legend: bool = True,
             legend_param: Optional[Dict] = None,  # New parameter for legend customization
             layout_param: Optional[Dict] = None  # New parameter for layout customization
         ):
@@ -384,10 +392,7 @@ class FlexiblePlotter:
                 ax.yaxis.set_major_locator(plt.MaxNLocator(y_ticks))
             if grid:
                 ax.grid(True, alpha=0.5)  # Enable grid if specified
-            if legend_param is None:
-                ax.legend(loc="best")
-            else:
-                ax.legend(**legend_param)
+            self._apply_legend(ax, show_legend, legend_param)
 
             if x_axis_format == "datetime":
                 maj_formatter = x_axis_ticks_format or "%Y-%m-%d %H:%M"
@@ -431,6 +436,7 @@ class FlexiblePlotter:
         figsize: Optional[Tuple[int, int]] = None,
         grid: bool = False,  # New parameter for grid
         show_plot: bool = True, # New parameter for showing the plot or not (for saving purposes)
+        show_legend: bool = True,
         legend_param: Optional[Dict] = None,  # New parameter for legend customization
         layout_param: Optional[Dict] = None  # New parameter for layout customization
     ):
@@ -509,10 +515,7 @@ class FlexiblePlotter:
             ax.yaxis.set_major_locator(plt.MaxNLocator(y_ticks))
         if grid:
             ax.grid(True, alpha=0.5)  # Enable grid if specified
-        if legend_param is None:
-            ax.legend(loc="best")
-        else:
-            ax.legend(**legend_param)
+        self._apply_legend(ax, show_legend, legend_param)
 
         if x_axis_format == "datetime":
             maj_formatter = x_axis_ticks_format or "%Y-%m-%d %H:%M"
@@ -559,6 +562,7 @@ class FlexiblePlotter:
         title: Optional[str] = None,
         figsize: Optional[Tuple[int, int]] = None,
         grid: bool = False,
+        show_legend: bool = True,
         legend_param: Optional[Dict] = None,  # New parameter for legend customization
         layout_param: Optional[Dict] = None  # New parameter for layout customization
     ):
@@ -633,10 +637,7 @@ class FlexiblePlotter:
                 ax.yaxis.set_major_locator(plt.MaxNLocator(y_ticks))
             if grid:
                 ax.grid(True, alpha=0.5)
-            if legend_param is None:
-                ax.legend(loc="best")
-            else:
-                ax.legend(**legend_param)
+            self._apply_legend(ax, show_legend, legend_param)
 
             if x_axis_format == "datetime":
                 maj_formatter = x_axis_ticks_format or "%Y-%m-%d %H:%M"
@@ -691,6 +692,7 @@ class FlexiblePlotter:
         grid: bool = False,
         title: Optional[str] = None,
         show_plot: bool = True,
+        show_legend: bool = True,
         legend_param: Optional[Dict] = None,  # New parameter for legend customization
         layout_param: Optional[Dict] = None,  # New parameter for layout customization
         vertical_lines: Optional[List[Optional[List[Union[float, pd.Timestamp]]]]] = None,  # NEW
@@ -795,10 +797,7 @@ class FlexiblePlotter:
                     ax.set_xlim(x_limits[i])
             if grid:
                 ax.grid(True, alpha=0.5)
-            if legend_param is None:
-                ax.legend(loc="best")
-            else:
-                ax.legend(**legend_param)
+            self._apply_legend(ax, show_legend, legend_param)
 
             # --- Add vertical lines for this subplot ---
             if vertical_lines[i]:
@@ -857,6 +856,7 @@ class FlexiblePlotter:
         figsize: Optional[Tuple[int, int]] = None,
         grid: bool = False,
         show_plot: bool = True,
+        show_legend: bool = True,
         legend_param: Optional[Dict] = None,
         layout_param: Optional[Dict] = None
     ):
@@ -925,10 +925,7 @@ class FlexiblePlotter:
             ax.yaxis.set_major_locator(plt.MaxNLocator(y_ticks))
         if grid:
             ax.grid(True, alpha=0.5)
-        if legend_param is None:
-            ax.legend(loc="best")
-        else:
-            ax.legend(**legend_param)
+        self._apply_legend(ax, show_legend, legend_param)
 
         if x_axis_format == "datetime":
             maj_formatter = x_axis_ticks_format or "%Y-%m-%d %H:%M"

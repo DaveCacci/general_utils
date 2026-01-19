@@ -68,6 +68,10 @@ def generate_parameter_samples(
     ValueError / RuntimeError
         If inputs are inconsistent or a method cannot satisfy constraints.
     """
+    # Set global seed for SALib methods (Saltelli, LHS)
+    if random_state is not None:
+        np.random.seed(random_state)
+
     rng = np.random.default_rng(random_state)
     D = len(x_names)
 
