@@ -157,6 +157,11 @@ def filter_and_save_multiple(modelname, current_date, deltap, start_window, end_
 def filter_on_offlinedata(input_file, output_path, y_df_data_off, var_couples_list_offline, log=False):
     # Define output-measurement couples
     dis_outputs = [var_couple_list[0] for var_couple_list in var_couples_list_offline]
+    dis_to_meas = {
+        var_couple_list[0]: var_couple_list[1]
+        for var_couple_list in var_couples_list_offline
+        if len(var_couple_list) > 1
+    }
     index=0
     if log and os.path.exists(output_path):
         logging.warning(f"The file {output_path} already exists and will be overridden!")
@@ -166,16 +171,23 @@ def filter_on_offlinedata(input_file, output_path, y_df_data_off, var_couples_li
             index +=1
             # Drop columns that are not needed for merging
             # Merge DataFrames based on 'Timestamp' column
-            merged_df = pd.merge(y_df_data_off, data, on='Timestamp', how='inner')
+            merged_df = pd.merge(data, y_df_data_off, on='Timestamp', how='inner')
             columns_to_save = [col for col in merged_df.columns if dis_output in col]
+            measurement_col = dis_to_meas.get(dis_output)
             # 18.04.2025 Deal with the situation of Sobol: first indices are computed, then filtered on offlinedata, so no "dis_output" diciture present in the column's names (only parameter names)
             if columns_to_save == []:
                 logging.warning(f"Column {dis_output} not found in the data, taking all the columns from the input file (but filtered with merging).")
                 columns_to_save = data.columns.tolist()
                 columns_to_save = [col for col in columns_to_save if col != 'Timestamp']
+            # Keep filtering consistent with compute_error: drop NaNs while measurement is still present.
+            if measurement_col in merged_df.columns:
+                merged_df.dropna(subset=columns_to_save + [measurement_col], inplace=True)
+            else:
+                if log:
+                    logging.warning(f"Measurement column for {dis_output} not found. Falling back to model-only NaN filtering.")
+                merged_df.dropna(subset=columns_to_save, inplace=True)
+
             merged_df.drop(merged_df.columns.difference(['Timestamp']+columns_to_save), axis=1, inplace=True)
-            # Drop rows that contain at least one 'np.nan' value
-            merged_df.dropna(inplace=True)
             merged_df.reset_index(drop=True,inplace=True)
             # Write the DataFrame to a new Excel file
             merged_df.to_excel(writer, sheet_name=f'{dis_output}', index=False)

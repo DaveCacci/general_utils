@@ -7,19 +7,15 @@ from datetime import datetime
 import numpy as np
 import os
 import logging
-
 import mplcursors  # Ensure mplcursors is installed for hover functionality of labels
 from collections import defaultdict
-
 
 def list_to_dataframe(data: List[np.ndarray], column_names: Optional[List[str]] = None) -> pd.DataFrame:
     """
     Convert a list of arrays to a DataFrame.
-
     Args:
         data: List of arrays.
         column_names: List of column names. If not provided, default names will be used.
-
     Returns:
         DataFrame containing the data.
     """
@@ -36,6 +32,11 @@ class FlexiblePlotter:
     A flexible plotter that supports datetime and float x-axes, with customizable options.
     All methods show the figure if `show_plot` is True. Externally if False, it is possible to save the plot/s;
     except for the 'generate_plots_with_incremental_variables' method, which saves the plots incrementally.
+    To handle:
+    - (i) different variables of a dataframe/dict on different plots
+    - (ii) different varibles of a dataframedict on same plot
+    - (iii) different variables across different dataframes in one plot
+    - (iv) different variables across different dataframes on different plots
     
     Note: this class at the moment is not able to plot confidence intervals of variables with 'fill_between'!
     """
@@ -48,7 +49,7 @@ class FlexiblePlotter:
 
     def __post_init__(self):
         self.logger.info('-----------------------------------------------\n')
-        self.logger.info('Instantiting FlexiblPlotter class\n')
+        self.logger.info('Instantiting FlexiblePlotter class\n')
 
     def _apply_legend(self, ax, show_legend: bool = True, legend_param: Optional[Dict] = None):
         """Apply legend if requested, keeping default behavior intact."""

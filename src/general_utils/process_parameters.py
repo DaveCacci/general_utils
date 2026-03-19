@@ -1,6 +1,9 @@
 import json
 import logging
 from datetime import datetime
+'''
+Module to process and update parameters stored in a JSON file.
+'''
 
 # Function to read the JSON file and access different parameter categories
 def load_parameters(file_path: str):
