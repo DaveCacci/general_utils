@@ -156,6 +156,9 @@ def FIM(grad: dict, merged_df_dict: dict, var_couples_list: list, constant_error
           It is of primary importance that the ordering of grad.keys() matches var_couples_list!!
           It is also important, if error_variance is None, that the keys and timestamps in merged_df_dict 
           match those in grad!!
+
+    Note 28/04/2026: futher dvelopment considering the 'rr' grad_type to enhence the numerical stability of the FIM and related matrix inversion.
+            If grad_type=='rr', compute FIM weighted by df['stdev_meas'] = constant_error[meas_name]. Then scale COV by D = diag(np.array([value[0] for value in uncertain_param_dict.values()])).
     """
     # Return info on grad_type
     if grad_type not in ['aa', 'ar']:
@@ -321,7 +324,11 @@ def FIM(grad: dict, merged_df_dict: dict, var_couples_list: list, constant_error
     # For 'ar' (absolute-relative): multiply by nominal parameter values
     # to convert relative uncertainties to absolute
     if grad_type=='ar':
-        stdev_param = stdev_param*np.array([value[0] for value in uncertain_param_dict.values()])
+        scale = np.array([v[0] for v in uncertain_param_dict.values()], dtype=float)
+        # Equivalent to D @ cov @ D but cheaper: elementwise scale by outer product
+        cov = (scale[:, None] * cov) * scale[None, :]
+        cov_export = pd.DataFrame(cov, index=uncertain_param_dict.keys(), columns=uncertain_param_dict.keys())
+        stdev_param = stdev_param * scale
     
     # Print approximate parameter uncertainties (diagonal-only estimate)
     # This is faster but ignores parameter correlations
